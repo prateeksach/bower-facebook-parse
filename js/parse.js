@@ -1,5 +1,5 @@
 /**
- * Parse JavaScript SDK v1.6.7
+ * Parse JavaScript SDK v1.9.1
  *
  * The source tree of this library can be found at
  *   https://github.com/ParsePlatform/Parse-SDK-JS
@@ -92,7 +92,7 @@ _CoreManager2['default'].setAnalyticsController({
     return RESTController.request('POST', 'events/' + name, { dimensions: dimensions });
   }
 });
-},{"./CoreManager":3,"babel-runtime/helpers/interop-require-default":47}],2:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"babel-runtime/helpers/interop-require-default":56}],2:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -165,9 +165,15 @@ function run(name, data, options) {
     throw new TypeError('Cloud function name must be a string.');
   }
 
-  return _CoreManager2['default'].getCloudController().run(name, data, {
-    useMasterKey: options.useMasterKey
-  })._thenRunCallbacks(options);
+  var requestOptions = {};
+  if (options.useMasterKey) {
+    requestOptions.useMasterKey = options.useMasterKey;
+  }
+  if (options.sessionToken) {
+    requestOptions.sessionToken = options.sessionToken;
+  }
+
+  return _CoreManager2['default'].getCloudController().run(name, data, requestOptions)._thenRunCallbacks(options);
 }
 
 _CoreManager2['default'].setCloudController({
@@ -176,7 +182,15 @@ _CoreManager2['default'].setCloudController({
 
     var payload = (0, _encode2['default'])(data, true);
 
-    var request = RESTController.request('POST', 'functions/' + name, payload, { useMasterKey: !!options.useMasterKey });
+    var requestOptions = {};
+    if (options.hasOwnProperty('useMasterKey')) {
+      requestOptions.useMasterKey = options.useMasterKey;
+    }
+    if (options.hasOwnProperty('sessionToken')) {
+      requestOptions.sessionToken = options.sessionToken;
+    }
+
+    var request = RESTController.request('POST', 'functions/' + name, payload, requestOptions);
 
     return request.then(function (res) {
       var decoded = (0, _decode2['default'])(res);
@@ -187,7 +201,7 @@ _CoreManager2['default'].setCloudController({
     })._thenRunCallbacks(options);
   }
 });
-},{"./CoreManager":3,"./ParseError":10,"./ParsePromise":16,"./decode":29,"./encode":30,"babel-runtime/helpers/interop-require-default":47}],3:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseError":13,"./ParsePromise":20,"./decode":35,"./encode":36,"babel-runtime/helpers/interop-require-default":56}],3:[function(_dereq_,module,exports){
 (function (process){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
@@ -204,10 +218,11 @@ _CoreManager2['default'].setCloudController({
 
 var config = {
   // Defaults
-  IS_NODE: typeof process !== 'undefined' && !!process.versions && !!process.versions.node,
+  IS_NODE: typeof process !== 'undefined' && !!process.versions && !!process.versions.node && !process.versions.electron,
   REQUEST_ATTEMPT_LIMIT: 5,
-  SERVER_URL: 'https://api.parse.com',
-  VERSION: '1.6.7',
+  SERVER_URL: 'https://api.parse.com/1',
+  LIVEQUERY_SERVER_URL: null,
+  VERSION: 'js' + '1.9.1',
   APPLICATION_ID: null,
   JAVASCRIPT_KEY: null,
   MASTER_KEY: null,
@@ -215,6 +230,14 @@ var config = {
   PERFORM_USER_REWRITE: true,
   FORCE_REVOCABLE_SESSION: false
 };
+
+function requireMethods(name, methods, controller) {
+  methods.forEach(function (func) {
+    if (typeof controller[func] !== 'function') {
+      throw new Error(name + ' must implement ' + func + '()');
+    }
+  });
+}
 
 module.exports = {
   get: function get(key) {
@@ -231,9 +254,7 @@ module.exports = {
   /* Specialized Controller Setters/Getters */
 
   setAnalyticsController: function setAnalyticsController(controller) {
-    if (typeof controller.track !== 'function') {
-      throw new Error('AnalyticsController must implement track()');
-    }
+    requireMethods('AnalyticsController', ['track'], controller);
     config['AnalyticsController'] = controller;
   },
 
@@ -242,9 +263,7 @@ module.exports = {
   },
 
   setCloudController: function setCloudController(controller) {
-    if (typeof controller.run !== 'function') {
-      throw new Error('CloudController must implement run()');
-    }
+    requireMethods('CloudController', ['run'], controller);
     config['CloudController'] = controller;
   },
 
@@ -253,12 +272,7 @@ module.exports = {
   },
 
   setConfigController: function setConfigController(controller) {
-    if (typeof controller.current !== 'function') {
-      throw new Error('ConfigController must implement current()');
-    }
-    if (typeof controller.get !== 'function') {
-      throw new Error('ConfigController must implement get()');
-    }
+    requireMethods('ConfigController', ['current', 'get'], controller);
     config['ConfigController'] = controller;
   },
 
@@ -267,12 +281,7 @@ module.exports = {
   },
 
   setFileController: function setFileController(controller) {
-    if (typeof controller.saveFile !== 'function') {
-      throw new Error('FileController must implement saveFile()');
-    }
-    if (typeof controller.saveBase64 !== 'function') {
-      throw new Error('FileController must implement saveBase64()');
-    }
+    requireMethods('FileController', ['saveFile', 'saveBase64'], controller);
     config['FileController'] = controller;
   },
 
@@ -281,9 +290,7 @@ module.exports = {
   },
 
   setInstallationController: function setInstallationController(controller) {
-    if (typeof controller.currentInstallationId !== 'function') {
-      throw new Error('InstallationController must implement currentInstallationId()');
-    }
+    requireMethods('InstallationController', ['currentInstallationId'], controller);
     config['InstallationController'] = controller;
   },
 
@@ -291,27 +298,8 @@ module.exports = {
     return config['InstallationController'];
   },
 
-  setPushController: function setPushController(controller) {
-    if (typeof controller.send !== 'function') {
-      throw new Error('PushController must implement send()');
-    }
-    config['PushController'] = controller;
-  },
-
-  getPushController: function getPushController() {
-    return config['PushController'];
-  },
-
   setObjectController: function setObjectController(controller) {
-    if (typeof controller.save !== 'function') {
-      throw new Error('ObjectController must implement save()');
-    }
-    if (typeof controller.fetch !== 'function') {
-      throw new Error('ObjectController must implement fetch()');
-    }
-    if (typeof controller.destroy !== 'function') {
-      throw new Error('ObjectController must implement destroy()');
-    }
+    requireMethods('ObjectController', ['save', 'fetch', 'destroy'], controller);
     config['ObjectController'] = controller;
   },
 
@@ -319,10 +307,27 @@ module.exports = {
     return config['ObjectController'];
   },
 
+  setObjectStateController: function setObjectStateController(controller) {
+    requireMethods('ObjectStateController', ['getState', 'initializeState', 'removeState', 'getServerData', 'setServerData', 'getPendingOps', 'setPendingOp', 'pushPendingState', 'popPendingState', 'mergeFirstPendingState', 'getObjectCache', 'estimateAttribute', 'estimateAttributes', 'commitServerChanges', 'enqueueTask', 'clearAllState'], controller);
+
+    config['ObjectStateController'] = controller;
+  },
+
+  getObjectStateController: function getObjectStateController() {
+    return config['ObjectStateController'];
+  },
+
+  setPushController: function setPushController(controller) {
+    requireMethods('PushController', ['send'], controller);
+    config['PushController'] = controller;
+  },
+
+  getPushController: function getPushController() {
+    return config['PushController'];
+  },
+
   setQueryController: function setQueryController(controller) {
-    if (typeof controller.find !== 'function') {
-      throw new Error('QueryController must implement find()');
-    }
+    requireMethods('QueryController', ['find'], controller);
     config['QueryController'] = controller;
   },
 
@@ -331,12 +336,7 @@ module.exports = {
   },
 
   setRESTController: function setRESTController(controller) {
-    if (typeof controller.request !== 'function') {
-      throw new Error('RESTController must implement request()');
-    }
-    if (typeof controller.ajax !== 'function') {
-      throw new Error('RESTController must implement ajax()');
-    }
+    requireMethods('RESTController', ['request', 'ajax'], controller);
     config['RESTController'] = controller;
   },
 
@@ -345,9 +345,7 @@ module.exports = {
   },
 
   setSessionController: function setSessionController(controller) {
-    if (typeof controller.getSession !== 'function') {
-      throw new Error('A SessionController must implement getSession()');
-    }
+    requireMethods('SessionController', ['getSession'], controller);
     config['SessionController'] = controller;
   },
 
@@ -357,25 +355,9 @@ module.exports = {
 
   setStorageController: function setStorageController(controller) {
     if (controller.async) {
-      if (typeof controller.getItemAsync !== 'function') {
-        throw new Error('An async StorageController must implement getItemAsync()');
-      }
-      if (typeof controller.setItemAsync !== 'function') {
-        throw new Error('An async StorageController must implement setItemAsync()');
-      }
-      if (typeof controller.removeItemAsync !== 'function') {
-        throw new Error('An async StorageController must implement removeItemAsync()');
-      }
+      requireMethods('An async StorageController', ['getItemAsync', 'setItemAsync', 'removeItemAsync'], controller);
     } else {
-      if (typeof controller.getItem !== 'function') {
-        throw new Error('A synchronous StorageController must implement getItem()');
-      }
-      if (typeof controller.setItem !== 'function') {
-        throw new Error('A synchronous StorageController must implement setItem()');
-      }
-      if (typeof controller.removeItem !== 'function') {
-        throw new Error('A synchonous StorageController must implement removeItem()');
-      }
+      requireMethods('A synchronous StorageController', ['getItem', 'setItem', 'removeItem'], controller);
     }
     config['StorageController'] = controller;
   },
@@ -385,45 +367,49 @@ module.exports = {
   },
 
   setUserController: function setUserController(controller) {
-    if (typeof controller.setCurrentUser !== 'function') {
-      throw new Error('A UserController must implement setCurrentUser()');
-    }
-    if (typeof controller.currentUser !== 'function') {
-      throw new Error('A UserController must implement currentUser()');
-    }
-    if (typeof controller.currentUserAsync !== 'function') {
-      throw new Error('A UserController must implement currentUserAsync()');
-    }
-    if (typeof controller.signUp !== 'function') {
-      throw new Error('A UserController must implement signUp()');
-    }
-    if (typeof controller.logIn !== 'function') {
-      throw new Error('A UserController must implement logIn()');
-    }
-    if (typeof controller.become !== 'function') {
-      throw new Error('A UserController must implement become()');
-    }
-    if (typeof controller.logOut !== 'function') {
-      throw new Error('A UserController must implement logOut()');
-    }
-    if (typeof controller.requestPasswordReset !== 'function') {
-      throw new Error('A UserController must implement requestPasswordReset()');
-    }
-    if (typeof controller.upgradeToRevocableSession !== 'function') {
-      throw new Error('A UserController must implement upgradeToRevocableSession()');
-    }
-    if (typeof controller.linkWith !== 'function') {
-      throw new Error('A UserController must implement linkWith()');
-    }
+    requireMethods('UserController', ['setCurrentUser', 'currentUser', 'currentUserAsync', 'signUp', 'logIn', 'become', 'logOut', 'requestPasswordReset', 'upgradeToRevocableSession', 'linkWith'], controller);
     config['UserController'] = controller;
   },
 
   getUserController: function getUserController() {
     return config['UserController'];
+  },
+
+  setLiveQueryController: function setLiveQueryController(controller) {
+    requireMethods('LiveQueryController', ['subscribe', 'unsubscribe', 'open', 'close'], controller);
+    config['LiveQueryController'] = controller;
+  },
+
+  getLiveQueryController: function getLiveQueryController() {
+    return config['LiveQueryController'];
+  },
+
+  setHooksController: function setHooksController(controller) {
+    requireMethods('HooksController', ['create', 'get', 'update', 'remove'], controller);
+    config['HooksController'] = controller;
+  },
+
+  getHooksController: function getHooksController() {
+    return config['HooksController'];
   }
 };
 }).call(this,_dereq_('_process'))
-},{"_process":49}],4:[function(_dereq_,module,exports){
+},{"_process":58}],4:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * This is a simple wrapper to unify EventEmitter implementations across platforms.
+ */
+
+'use strict';
+
+module.exports = _dereq_('events').EventEmitter;
+},{"events":129}],5:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -664,7 +650,7 @@ exports['default'] = {
   }
 };
 module.exports = exports['default'];
-},{"./ParseUser":21,"./parseDate":34,"babel-runtime/helpers/interop-require-default":47}],5:[function(_dereq_,module,exports){
+},{"./ParseUser":25,"./parseDate":40,"babel-runtime/helpers/interop-require-default":56}],6:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -696,7 +682,7 @@ var iidCache = null;
 
 function hexOctet() {
   return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-};
+}
 
 function generateId() {
   return hexOctet() + hexOctet() + '-' + hexOctet() + '-' + hexOctet() + '-' + hexOctet() + '-' + hexOctet() + hexOctet() + hexOctet();
@@ -729,7 +715,727 @@ module.exports = {
     iidCache = iid;
   }
 };
-},{"./CoreManager":3,"./ParsePromise":16,"./Storage":24,"babel-runtime/helpers/interop-require-default":47}],6:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParsePromise":20,"./Storage":29,"babel-runtime/helpers/interop-require-default":56}],7:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var _get = _dereq_('babel-runtime/helpers/get')['default'];
+
+var _inherits = _dereq_('babel-runtime/helpers/inherits')['default'];
+
+var _createClass = _dereq_('babel-runtime/helpers/create-class')['default'];
+
+var _classCallCheck = _dereq_('babel-runtime/helpers/class-call-check')['default'];
+
+var _Map = _dereq_('babel-runtime/core-js/map')['default'];
+
+var _getIterator = _dereq_('babel-runtime/core-js/get-iterator')['default'];
+
+var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-default')['default'];
+
+Object.defineProperty(exports, '__esModule', {
+  value: true
+});
+
+var _EventEmitter2 = _dereq_('./EventEmitter');
+
+var _EventEmitter3 = _interopRequireDefault(_EventEmitter2);
+
+var _ParsePromise = _dereq_('./ParsePromise');
+
+var _ParsePromise2 = _interopRequireDefault(_ParsePromise);
+
+var _ParseObject = _dereq_('./ParseObject');
+
+var _ParseObject2 = _interopRequireDefault(_ParseObject);
+
+var _LiveQuerySubscription = _dereq_('./LiveQuerySubscription');
+
+var _LiveQuerySubscription2 = _interopRequireDefault(_LiveQuerySubscription);
+
+// The LiveQuery client inner state
+var CLIENT_STATE = {
+  INITIALIZED: 'initialized',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  CLOSED: 'closed',
+  RECONNECTING: 'reconnecting',
+  DISCONNECTED: 'disconnected'
+};
+
+// The event type the LiveQuery client should sent to server
+var OP_TYPES = {
+  CONNECT: 'connect',
+  SUBSCRIBE: 'subscribe',
+  UNSUBSCRIBE: 'unsubscribe',
+  ERROR: 'error'
+};
+
+// The event we get back from LiveQuery server
+var OP_EVENTS = {
+  CONNECTED: 'connected',
+  SUBSCRIBED: 'subscribed',
+  UNSUBSCRIBED: 'unsubscribed',
+  ERROR: 'error',
+  CREATE: 'create',
+  UPDATE: 'update',
+  ENTER: 'enter',
+  LEAVE: 'leave',
+  DELETE: 'delete'
+};
+
+// The event the LiveQuery client should emit
+var CLIENT_EMMITER_TYPES = {
+  CLOSE: 'close',
+  ERROR: 'error',
+  OPEN: 'open'
+};
+
+// The event the LiveQuery subscription should emit
+var SUBSCRIPTION_EMMITER_TYPES = {
+  OPEN: 'open',
+  CLOSE: 'close',
+  ERROR: 'error',
+  CREATE: 'create',
+  UPDATE: 'update',
+  ENTER: 'enter',
+  LEAVE: 'leave',
+  DELETE: 'delete'
+};
+
+var generateInterval = function generateInterval(k) {
+  return Math.random() * Math.min(30, Math.pow(2, k) - 1) * 1000;
+};
+
+/**
+ * Creates a new LiveQueryClient.
+ * Extends events.EventEmitter
+ * <a href="https://nodejs.org/api/events.html#events_class_eventemitter">cloud functions</a>.
+ *
+ * A wrapper of a standard WebSocket client. We add several useful methods to
+ * help you connect/disconnect to LiveQueryServer, subscribe/unsubscribe a ParseQuery easily.
+ *
+ * javascriptKey and masterKey are used for verifying the LiveQueryClient when it tries
+ * to connect to the LiveQuery server
+ *
+ * @class Parse.LiveQueryClient
+ * @constructor
+ * @param {Object} options
+ * @param {string} options.applicationId - applicationId of your Parse app
+ * @param {string} options.serverURL - <b>the URL of your LiveQuery server</b>
+ * @param {string} options.javascriptKey (optional)
+ * @param {string} options.masterKey (optional) Your Parse Master Key. (Node.js only!)
+ * @param {string} options.sessionToken (optional)
+ *
+ *
+ * We expose three events to help you monitor the status of the LiveQueryClient.
+ *
+ * <pre>
+ * let Parse = require('parse/node');
+ * let LiveQueryClient = Parse.LiveQueryClient;
+ * let client = new LiveQueryClient({
+ *   applicationId: '',
+ *   serverURL: '',
+ *   javascriptKey: '',
+ *   masterKey: ''
+ *  });
+ * </pre>
+ *
+ * Open - When we establish the WebSocket connection to the LiveQuery server, you'll get this event.
+ * <pre>
+ * client.on('open', () => {
+ *
+ * });</pre>
+ *
+ * Close - When we lose the WebSocket connection to the LiveQuery server, you'll get this event.
+ * <pre>
+ * client.on('close', () => {
+ *
+ * });</pre>
+ *
+ * Error - When some network error or LiveQuery server error happens, you'll get this event.
+ * <pre>
+ * client.on('error', (error) => {
+ *
+ * });</pre>
+ *
+ *
+ */
+
+var LiveQueryClient = (function (_EventEmitter) {
+  _inherits(LiveQueryClient, _EventEmitter);
+
+  function LiveQueryClient(_ref) {
+    var applicationId = _ref.applicationId;
+    var serverURL = _ref.serverURL;
+    var javascriptKey = _ref.javascriptKey;
+    var masterKey = _ref.masterKey;
+    var sessionToken = _ref.sessionToken;
+
+    _classCallCheck(this, LiveQueryClient);
+
+    _get(Object.getPrototypeOf(LiveQueryClient.prototype), 'constructor', this).call(this);
+
+    if (!serverURL || serverURL.indexOf('ws') !== 0) {
+      throw new Error('You need to set a proper Parse LiveQuery server url before using LiveQueryClient');
+    }
+
+    this.reconnectHandle = null;
+    this.attempts = 1;;
+    this.id = 0;
+    this.requestId = 1;
+    this.serverURL = serverURL;
+    this.applicationId = applicationId;
+    this.javascriptKey = javascriptKey;
+    this.masterKey = masterKey;
+    this.sessionToken = sessionToken;
+    this.connectPromise = new _ParsePromise2['default']();
+    this.subscriptions = new _Map();
+    this.state = CLIENT_STATE.INITIALIZED;
+  }
+
+  _createClass(LiveQueryClient, [{
+    key: 'shouldOpen',
+    value: function shouldOpen() {
+      return this.state === CLIENT_STATE.INITIALIZED || this.state === CLIENT_STATE.DISCONNECTED;
+    }
+
+    /**
+     * Subscribes to a ParseQuery
+     *
+     * If you provide the sessionToken, when the LiveQuery server gets ParseObject's
+     * updates from parse server, it'll try to check whether the sessionToken fulfills
+     * the ParseObject's ACL. The LiveQuery server will only send updates to clients whose
+     * sessionToken is fit for the ParseObject's ACL. You can check the LiveQuery protocol
+     * <a href="https://github.com/ParsePlatform/parse-server/wiki/Parse-LiveQuery-Protocol-Specification">here</a> for more details. The subscription you get is the same subscription you get
+     * from our Standard API.
+     *
+     * @method subscribe
+     * @param {Object} query - the ParseQuery you want to subscribe to
+     * @param {string} sessionToken (optional)
+     * @return {Object} subscription
+     */
+  }, {
+    key: 'subscribe',
+    value: function subscribe(query, sessionToken) {
+      var _this = this;
+
+      if (!query) {
+        return;
+      }
+      var where = query.toJSON().where;
+      var className = query.className;
+      var subscribeRequest = {
+        op: OP_TYPES.SUBSCRIBE,
+        requestId: this.requestId,
+        query: {
+          className: className,
+          where: where
+        }
+      };
+
+      if (sessionToken) {
+        subscribeRequest.sessionToken = sessionToken;
+      }
+
+      var subscription = new _LiveQuerySubscription2['default'](this.requestId, query, sessionToken);
+      this.subscriptions.set(this.requestId, subscription);
+      this.requestId += 1;
+      this.connectPromise.then(function () {
+        _this.socket.send(JSON.stringify(subscribeRequest));
+      });
+
+      // adding listener so process does not crash
+      // best practice is for developer to register their own listener
+      subscription.on('error', function () {});
+
+      return subscription;
+    }
+
+    /**
+     * After calling unsubscribe you'll stop receiving events from the subscription object.
+     *
+     * @method unsubscribe
+     * @param {Object} subscription - subscription you would like to unsubscribe from.
+     */
+  }, {
+    key: 'unsubscribe',
+    value: function unsubscribe(subscription) {
+      var _this2 = this;
+
+      if (!subscription) {
+        return;
+      }
+
+      this.subscriptions['delete'](subscription.id);
+      var unsubscribeRequest = {
+        op: OP_TYPES.UNSUBSCRIBE,
+        requestId: subscription.id
+      };
+      this.connectPromise.then(function () {
+        _this2.socket.send(JSON.stringify(unsubscribeRequest));
+      });
+    }
+
+    /**
+     * After open is called, the LiveQueryClient will try to send a connect request
+     * to the LiveQuery server.
+     *
+     * @method open
+     */
+  }, {
+    key: 'open',
+    value: function open() {
+      var _this3 = this;
+
+      var WebSocketImplementation = this._getWebSocketImplementation();
+      if (!WebSocketImplementation) {
+        this.emit(CLIENT_EMMITER_TYPES.ERROR, 'Can not find WebSocket implementation');
+        return;
+      }
+
+      if (this.state !== CLIENT_STATE.RECONNECTING) {
+        this.state = CLIENT_STATE.CONNECTING;
+      }
+
+      // Get WebSocket implementation
+      this.socket = new WebSocketImplementation(this.serverURL);
+
+      // Bind WebSocket callbacks
+      this.socket.onopen = function () {
+        _this3._handleWebSocketOpen();
+      };
+
+      this.socket.onmessage = function (event) {
+        _this3._handleWebSocketMessage(event);
+      };
+
+      this.socket.onclose = function () {
+        _this3._handleWebSocketClose();
+      };
+
+      this.socket.onerror = function (error) {
+        console.log("error on socket");
+        _this3._handleWebSocketError(error);
+      };
+    }
+  }, {
+    key: 'resubscribe',
+    value: function resubscribe() {
+      var _this4 = this;
+
+      this.subscriptions.forEach(function (subscription, requestId) {
+        var query = subscription.query;
+        var where = query.toJSON().where;
+        var className = query.className;
+        var sessionToken = subscription.sessionToken;
+        var subscribeRequest = {
+          op: OP_TYPES.SUBSCRIBE,
+          requestId: requestId,
+          query: {
+            className: className,
+            where: where
+          }
+        };
+
+        if (sessionToken) {
+          subscribeRequest.sessionToken = sessionToken;
+        }
+
+        _this4.connectPromise.then(function () {
+          _this4.socket.send(JSON.stringify(subscribeRequest));
+        });
+      });
+    }
+
+    /**
+     * This method will close the WebSocket connection to this LiveQueryClient,
+     * cancel the auto reconnect and unsubscribe all subscriptions based on it.
+     *
+     * @method close
+     */
+  }, {
+    key: 'close',
+    value: function close() {
+      if (this.state === CLIENT_STATE.INITIALIZED || this.state === CLIENT_STATE.DISCONNECTED) {
+        return;
+      }
+      this.state = CLIENT_STATE.DISCONNECTED;
+      this.socket.close();
+      // Notify each subscription about the close
+      var _iteratorNormalCompletion = true;
+      var _didIteratorError = false;
+      var _iteratorError = undefined;
+
+      try {
+        for (var _iterator = _getIterator(this.subscriptions.values()), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+          var subscription = _step.value;
+
+          subscription.emit(SUBSCRIPTION_EMMITER_TYPES.CLOSE);
+        }
+      } catch (err) {
+        _didIteratorError = true;
+        _iteratorError = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion && _iterator['return']) {
+            _iterator['return']();
+          }
+        } finally {
+          if (_didIteratorError) {
+            throw _iteratorError;
+          }
+        }
+      }
+
+      this._handleReset();
+      this.emit(CLIENT_EMMITER_TYPES.CLOSE);
+    }
+  }, {
+    key: '_getWebSocketImplementation',
+    value: function _getWebSocketImplementation() {
+      return typeof WebSocket === 'function' || typeof WebSocket === 'object' ? WebSocket : null;
+    }
+
+    // ensure we start with valid state if connect is called again after close
+  }, {
+    key: '_handleReset',
+    value: function _handleReset() {
+      this.attempts = 1;;
+      this.id = 0;
+      this.requestId = 1;
+      this.connectPromise = new _ParsePromise2['default']();
+      this.subscriptions = new _Map();
+    }
+  }, {
+    key: '_handleWebSocketOpen',
+    value: function _handleWebSocketOpen() {
+      this.attempts = 1;
+      var connectRequest = {
+        op: OP_TYPES.CONNECT,
+        applicationId: this.applicationId,
+        javascriptKey: this.javascriptKey,
+        masterKey: this.masterKey,
+        sessionToken: this.sessionToken
+      };
+      this.socket.send(JSON.stringify(connectRequest));
+    }
+  }, {
+    key: '_handleWebSocketMessage',
+    value: function _handleWebSocketMessage(event) {
+      var data = event.data;
+      if (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+      var subscription = null;
+      if (data.requestId) {
+        subscription = this.subscriptions.get(data.requestId);
+      }
+      switch (data.op) {
+        case OP_EVENTS.CONNECTED:
+          if (this.state === CLIENT_STATE.RECONNECTING) {
+            this.resubscribe();
+          }
+          this.emit(CLIENT_EMMITER_TYPES.OPEN);
+          this.id = data.clientId;
+          this.connectPromise.resolve();
+          this.state = CLIENT_STATE.CONNECTED;
+          break;
+        case OP_EVENTS.SUBSCRIBED:
+          if (subscription) {
+            subscription.emit(SUBSCRIPTION_EMMITER_TYPES.OPEN);
+          }
+          break;
+        case OP_EVENTS.ERROR:
+          if (data.requestId) {
+            if (subscription) {
+              subscription.emit(SUBSCRIPTION_EMMITER_TYPES.ERROR, data.error);
+            }
+          } else {
+            this.emit(CLIENT_EMMITER_TYPES.ERROR, data.error);
+          }
+          break;
+        case OP_EVENTS.UNSUBSCRIBED:
+          // We have already deleted subscription in unsubscribe(), do nothing here
+          break;
+        default:
+          // create, update, enter, leave, delete cases
+          var className = data.object.className;
+          // Delete the extrea __type and className fields during transfer to full JSON
+          delete data.object.__type;
+          delete data.object.className;
+          var parseObject = new _ParseObject2['default'](className);
+          parseObject._finishFetch(data.object);
+          if (!subscription) {
+            break;
+          }
+          subscription.emit(data.op, parseObject);
+      }
+    }
+  }, {
+    key: '_handleWebSocketClose',
+    value: function _handleWebSocketClose() {
+      if (this.state === CLIENT_STATE.DISCONNECTED) {
+        return;
+      }
+      this.state = CLIENT_STATE.CLOSED;
+      this.emit(CLIENT_EMMITER_TYPES.CLOSE);
+      // Notify each subscription about the close
+      var _iteratorNormalCompletion2 = true;
+      var _didIteratorError2 = false;
+      var _iteratorError2 = undefined;
+
+      try {
+        for (var _iterator2 = _getIterator(this.subscriptions.values()), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+          var subscription = _step2.value;
+
+          subscription.emit(SUBSCRIPTION_EMMITER_TYPES.CLOSE);
+        }
+      } catch (err) {
+        _didIteratorError2 = true;
+        _iteratorError2 = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion2 && _iterator2['return']) {
+            _iterator2['return']();
+          }
+        } finally {
+          if (_didIteratorError2) {
+            throw _iteratorError2;
+          }
+        }
+      }
+
+      this._handleReconnect();
+    }
+  }, {
+    key: '_handleWebSocketError',
+    value: function _handleWebSocketError(error) {
+      this.emit(CLIENT_EMMITER_TYPES.ERROR, error);
+      var _iteratorNormalCompletion3 = true;
+      var _didIteratorError3 = false;
+      var _iteratorError3 = undefined;
+
+      try {
+        for (var _iterator3 = _getIterator(this.subscriptions.values()), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
+          var subscription = _step3.value;
+
+          subscription.emit(SUBSCRIPTION_EMMITER_TYPES.ERROR);
+        }
+      } catch (err) {
+        _didIteratorError3 = true;
+        _iteratorError3 = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion3 && _iterator3['return']) {
+            _iterator3['return']();
+          }
+        } finally {
+          if (_didIteratorError3) {
+            throw _iteratorError3;
+          }
+        }
+      }
+
+      this._handleReconnect();
+    }
+  }, {
+    key: '_handleReconnect',
+    value: function _handleReconnect() {
+      var _this5 = this;
+
+      // if closed or currently reconnecting we stop attempting to reconnect
+      if (this.state === CLIENT_STATE.DISCONNECTED) {
+        return;
+      }
+
+      this.state = CLIENT_STATE.RECONNECTING;
+      var time = generateInterval(this.attempts);
+
+      // handle case when both close/error occur at frequent rates we ensure we do not reconnect unnecessarily.
+      // we're unable to distinguish different between close/error when we're unable to reconnect therefore
+      // we try to reonnect in both cases
+      // server side ws and browser WebSocket behave differently in when close/error get triggered
+
+      if (this.reconnectHandle) {
+        clearTimeout(this.reconnectHandle);
+      } else {
+        console.info('attempting to reconnect');
+      }
+
+      this.reconnectHandle = setTimeout((function () {
+        _this5.attempts++;
+        _this5.connectPromise = new _ParsePromise2['default']();
+        _this5.open();
+      }).bind(this), time);
+    }
+  }]);
+
+  return LiveQueryClient;
+})(_EventEmitter3['default']);
+
+exports['default'] = LiveQueryClient;
+module.exports = exports['default'];
+},{"./EventEmitter":4,"./LiveQuerySubscription":8,"./ParseObject":18,"./ParsePromise":20,"babel-runtime/core-js/get-iterator":43,"babel-runtime/core-js/map":44,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],8:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var _get = _dereq_('babel-runtime/helpers/get')['default'];
+
+var _inherits = _dereq_('babel-runtime/helpers/inherits')['default'];
+
+var _createClass = _dereq_('babel-runtime/helpers/create-class')['default'];
+
+var _classCallCheck = _dereq_('babel-runtime/helpers/class-call-check')['default'];
+
+var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-default')['default'];
+
+Object.defineProperty(exports, '__esModule', {
+  value: true
+});
+
+var _EventEmitter2 = _dereq_('./EventEmitter');
+
+var _EventEmitter3 = _interopRequireDefault(_EventEmitter2);
+
+var _CoreManager = _dereq_('./CoreManager');
+
+var _CoreManager2 = _interopRequireDefault(_CoreManager);
+
+/**
+ * Creates a new LiveQuery Subscription.
+ * Extends events.EventEmitter
+ * <a href="https://nodejs.org/api/events.html#events_class_eventemitter">cloud functions</a>.
+ *
+ * @constructor
+ * @param {string} id - subscription id
+ * @param {string} query - query to subscribe to
+ * @param {string} sessionToken - optional session token
+ *
+ * <p>Open Event - When you call query.subscribe(), we send a subscribe request to
+ * the LiveQuery server, when we get the confirmation from the LiveQuery server,
+ * this event will be emitted. When the client loses WebSocket connection to the
+ * LiveQuery server, we will try to auto reconnect the LiveQuery server. If we
+ * reconnect the LiveQuery server and successfully resubscribe the ParseQuery,
+ * you'll also get this event.
+ *
+ * <pre>
+ * subscription.on('open', () => {
+ *
+ * });</pre></p>
+ *
+ * <p>Create Event - When a new ParseObject is created and it fulfills the ParseQuery you subscribe,
+ * you'll get this event. The object is the ParseObject which is created.
+ *
+ * <pre>
+ * subscription.on('create', (object) => {
+ *
+ * });</pre></p>
+ *
+ * <p>Update Event - When an existing ParseObject which fulfills the ParseQuery you subscribe
+ * is updated (The ParseObject fulfills the ParseQuery before and after changes),
+ * you'll get this event. The object is the ParseObject which is updated.
+ * Its content is the latest value of the ParseObject.
+ *
+ * <pre>
+ * subscription.on('update', (object) => {
+ *
+ * });</pre></p>
+ *
+ * <p>Enter Event - When an existing ParseObject's old value doesn't fulfill the ParseQuery
+ * but its new value fulfills the ParseQuery, you'll get this event. The object is the
+ * ParseObject which enters the ParseQuery. Its content is the latest value of the ParseObject.
+ *
+ * <pre>
+ * subscription.on('enter', (object) => {
+ *
+ * });</pre></p>
+ *
+ *
+ * <p>Update Event - When an existing ParseObject's old value fulfills the ParseQuery but its new value
+ * doesn't fulfill the ParseQuery, you'll get this event. The object is the ParseObject
+ * which leaves the ParseQuery. Its content is the latest value of the ParseObject.
+ *
+ * <pre>
+ * subscription.on('leave', (object) => {
+ *
+ * });</pre></p>
+ *
+ *
+ * <p>Delete Event - When an existing ParseObject which fulfills the ParseQuery is deleted, you'll
+ * get this event. The object is the ParseObject which is deleted.
+ *
+ * <pre>
+ * subscription.on('delete', (object) => {
+ *
+ * });</pre></p>
+ *
+ *
+ * <p>Close Event - When the client loses the WebSocket connection to the LiveQuery
+ * server and we stop receiving events, you'll get this event.
+ *
+ * <pre>
+ * subscription.on('close', () => {
+ *
+ * });</pre></p>
+ *
+ *
+ */
+
+var Subscription = (function (_EventEmitter) {
+  _inherits(Subscription, _EventEmitter);
+
+  function Subscription(id, query, sessionToken) {
+    _classCallCheck(this, Subscription);
+
+    _get(Object.getPrototypeOf(Subscription.prototype), 'constructor', this).call(this);
+    this.id = id;
+    this.query = query;
+    this.sessionToken = sessionToken;
+  }
+
+  /**
+   * @method unsubscribe
+   */
+
+  _createClass(Subscription, [{
+    key: 'unsubscribe',
+    value: function unsubscribe() {
+      var _this2 = this;
+
+      var _this = this;
+      _CoreManager2['default'].getLiveQueryController().getDefaultLiveQueryClient().then(function (liveQueryClient) {
+        liveQueryClient.unsubscribe(_this);
+        _this.emit('close');
+        _this2.resolve();
+      });
+    }
+  }]);
+
+  return Subscription;
+})(_EventEmitter3['default']);
+
+exports['default'] = Subscription;
+module.exports = exports['default'];
+},{"./CoreManager":3,"./EventEmitter":4,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],9:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -748,22 +1454,15 @@ var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-defa
 Object.defineProperty(exports, '__esModule', {
   value: true
 });
-exports.getState = getState;
-exports.initializeState = initializeState;
-exports.removeState = removeState;
-exports.getServerData = getServerData;
+exports.defaultState = defaultState;
 exports.setServerData = setServerData;
-exports.getPendingOps = getPendingOps;
 exports.setPendingOp = setPendingOp;
 exports.pushPendingState = pushPendingState;
 exports.popPendingState = popPendingState;
 exports.mergeFirstPendingState = mergeFirstPendingState;
-exports.getObjectCache = getObjectCache;
 exports.estimateAttribute = estimateAttribute;
 exports.estimateAttributes = estimateAttributes;
 exports.commitServerChanges = commitServerChanges;
-exports.enqueueTask = enqueueTask;
-exports._clearAllState = _clearAllState;
 
 var _encode = _dereq_('./encode');
 
@@ -791,178 +1490,109 @@ var _TaskQueue2 = _interopRequireDefault(_TaskQueue);
 
 var _ParseOp = _dereq_('./ParseOp');
 
-var objectState = {};
-
-function getState(className, id) {
-  var classData = objectState[className];
-  if (classData) {
-    return classData[id] || null;
-  }
-  return null;
+function defaultState() {
+  return {
+    serverData: {},
+    pendingOps: [{}],
+    objectCache: {},
+    tasks: new _TaskQueue2['default'](),
+    existed: false
+  };
 }
 
-function initializeState(className, id, initial) {
-  var state = getState(className, id);
-  if (state) {
-    return state;
-  }
-  if (!objectState[className]) {
-    objectState[className] = {};
-  }
-  if (!initial) {
-    initial = {
-      serverData: {},
-      pendingOps: [{}],
-      objectCache: {},
-      tasks: new _TaskQueue2['default'](),
-      existed: false
-    };
-  }
-  state = objectState[className][id] = initial;
-  return state;
-}
-
-function removeState(className, id) {
-  var state = getState(className, id);
-  if (state === null) {
-    return null;
-  }
-  delete objectState[className][id];
-  return state;
-}
-
-function getServerData(className, id) {
-  var state = getState(className, id);
-  if (state) {
-    return state.serverData;
-  }
-  return {};
-}
-
-function setServerData(className, id, attributes) {
-  var data = initializeState(className, id).serverData;
-  for (var attr in attributes) {
-    if (typeof attributes[attr] !== 'undefined') {
-      data[attr] = attributes[attr];
+function setServerData(serverData, attributes) {
+  for (var _attr in attributes) {
+    if (typeof attributes[_attr] !== 'undefined') {
+      serverData[_attr] = attributes[_attr];
     } else {
-      delete data[attr];
+      delete serverData[_attr];
     }
   }
 }
 
-function getPendingOps(className, id) {
-  var state = getState(className, id);
-  if (state) {
-    return state.pendingOps;
-  }
-  return [{}];
-}
-
-function setPendingOp(className, id, attr, op) {
-  var pending = initializeState(className, id).pendingOps;
-  var last = pending.length - 1;
+function setPendingOp(pendingOps, attr, op) {
+  var last = pendingOps.length - 1;
   if (op) {
-    pending[last][attr] = op;
+    pendingOps[last][attr] = op;
   } else {
-    delete pending[last][attr];
+    delete pendingOps[last][attr];
   }
 }
 
-function pushPendingState(className, id) {
-  var pending = initializeState(className, id).pendingOps;
-  pending.push({});
+function pushPendingState(pendingOps) {
+  pendingOps.push({});
 }
 
-function popPendingState(className, id) {
-  var pending = initializeState(className, id).pendingOps;
-  var first = pending.shift();
-  if (!pending.length) {
-    pending[0] = {};
+function popPendingState(pendingOps) {
+  var first = pendingOps.shift();
+  if (!pendingOps.length) {
+    pendingOps[0] = {};
   }
   return first;
 }
 
-function mergeFirstPendingState(className, id) {
-  var first = popPendingState(className, id);
-  var pending = getPendingOps(className, id);
-  var next = pending[0];
-  for (var attr in first) {
-    if (next[attr] && first[attr]) {
-      var merged = next[attr].mergeWith(first[attr]);
+function mergeFirstPendingState(pendingOps) {
+  var first = popPendingState(pendingOps);
+  var next = pendingOps[0];
+  for (var _attr2 in first) {
+    if (next[_attr2] && first[_attr2]) {
+      var merged = next[_attr2].mergeWith(first[_attr2]);
       if (merged) {
-        next[attr] = merged;
+        next[_attr2] = merged;
       }
     } else {
-      next[attr] = first[attr];
+      next[_attr2] = first[_attr2];
     }
   }
 }
 
-function getObjectCache(className, id) {
-  var state = getState(className, id);
-  if (state) {
-    return state.objectCache;
-  }
-  return {};
-}
-
-function estimateAttribute(className, id, attr) {
-  var serverData = getServerData(className, id);
+function estimateAttribute(serverData, pendingOps, className, id, attr) {
   var value = serverData[attr];
-  var pending = getPendingOps(className, id);
-  for (var i = 0; i < pending.length; i++) {
-    if (pending[i][attr]) {
-      if (pending[i][attr] instanceof _ParseOp.RelationOp) {
-        value = pending[i][attr].applyTo(value, { className: className, id: id }, attr);
+  for (var i = 0; i < pendingOps.length; i++) {
+    if (pendingOps[i][attr]) {
+      if (pendingOps[i][attr] instanceof _ParseOp.RelationOp) {
+        if (id) {
+          value = pendingOps[i][attr].applyTo(value, { className: className, id: id }, attr);
+        }
       } else {
-        value = pending[i][attr].applyTo(value);
+        value = pendingOps[i][attr].applyTo(value);
       }
     }
   }
   return value;
 }
 
-function estimateAttributes(className, id) {
+function estimateAttributes(serverData, pendingOps, className, id) {
   var data = {};
-  var attr;
-  var serverData = getServerData(className, id);
+  var attr = undefined;
   for (attr in serverData) {
     data[attr] = serverData[attr];
   }
-  var pending = getPendingOps(className, id);
-  for (var i = 0; i < pending.length; i++) {
-    for (attr in pending[i]) {
-      if (pending[i][attr] instanceof _ParseOp.RelationOp) {
-        data[attr] = pending[i][attr].applyTo(data[attr], { className: className, id: id }, attr);
+  for (var i = 0; i < pendingOps.length; i++) {
+    for (attr in pendingOps[i]) {
+      if (pendingOps[i][attr] instanceof _ParseOp.RelationOp) {
+        if (id) {
+          data[attr] = pendingOps[i][attr].applyTo(data[attr], { className: className, id: id }, attr);
+        }
       } else {
-        data[attr] = pending[i][attr].applyTo(data[attr]);
+        data[attr] = pendingOps[i][attr].applyTo(data[attr]);
       }
     }
   }
   return data;
 }
 
-function commitServerChanges(className, id, changes) {
-  var state = initializeState(className, id);
-  for (var attr in changes) {
-    var val = changes[attr];
-    state.serverData[attr] = val;
+function commitServerChanges(serverData, objectCache, changes) {
+  for (var _attr3 in changes) {
+    var val = changes[_attr3];
+    serverData[_attr3] = val;
     if (val && typeof val === 'object' && !(val instanceof _ParseObject2['default']) && !(val instanceof _ParseFile2['default']) && !(val instanceof _ParseRelation2['default'])) {
       var json = (0, _encode2['default'])(val, false, true);
-      state.objectCache[attr] = JSON.stringify(json);
+      objectCache[_attr3] = JSON.stringify(json);
     }
   }
 }
-
-function enqueueTask(className, id, task) {
-  var state = initializeState(className, id);
-  return state.tasks.enqueue(task);
-}
-
-function _clearAllState() {
-  objectState = {};
-}
-},{"./ParseFile":11,"./ParseObject":14,"./ParseOp":15,"./ParsePromise":16,"./ParseRelation":18,"./TaskQueue":26,"./encode":30,"babel-runtime/helpers/interop-require-default":47}],7:[function(_dereq_,module,exports){
+},{"./ParseFile":14,"./ParseObject":18,"./ParseOp":19,"./ParsePromise":20,"./ParseRelation":22,"./TaskQueue":31,"./encode":36,"babel-runtime/helpers/interop-require-default":56}],10:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -1013,7 +1643,7 @@ var Parse = {
    * You can get your keys from the Data Browser on parse.com.
    * @method initialize
    * @param {String} applicationId Your Parse Application ID.
-   * @param {String} javaScriptKey Your Parse JavaScript Key.
+   * @param {String} javaScriptKey (optional) Your Parse JavaScript Key (Not needed for parse-server)
    * @param {String} masterKey (optional) Your Parse Master Key. (Node.js only!)
    * @static
    */
@@ -1065,6 +1695,14 @@ Object.defineProperty(Parse, 'serverURL', {
     _CoreManager2['default'].set('SERVER_URL', value);
   }
 });
+Object.defineProperty(Parse, 'liveQueryServerURL', {
+  get: function get() {
+    return _CoreManager2['default'].get('LIVEQUERY_SERVER_URL');
+  },
+  set: function set(value) {
+    _CoreManager2['default'].set('LIVEQUERY_SERVER_URL', value);
+  }
+});
 /** End setters **/
 
 Parse.ACL = _dereq_('./ParseACL');
@@ -1095,6 +1733,8 @@ Parse.Role = _dereq_('./ParseRole');
 Parse.Session = _dereq_('./ParseSession');
 Parse.Storage = _dereq_('./Storage');
 Parse.User = _dereq_('./ParseUser');
+Parse.LiveQuery = _dereq_('./ParseLiveQuery');
+Parse.LiveQueryClient = _dereq_('./LiveQueryClient');
 
 Parse._request = function () {
   for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
@@ -1128,7 +1768,7 @@ _CoreManager2['default'].setRESTController(_RESTController2['default']);
 Parse.Parse = Parse;
 
 module.exports = Parse;
-},{"./Analytics":1,"./Cloud":2,"./CoreManager":3,"./FacebookUtils":4,"./InstallationController":5,"./ParseACL":8,"./ParseConfig":9,"./ParseError":10,"./ParseFile":11,"./ParseGeoPoint":12,"./ParseInstallation":13,"./ParseObject":14,"./ParseOp":15,"./ParsePromise":16,"./ParseQuery":17,"./ParseRelation":18,"./ParseRole":19,"./ParseSession":20,"./ParseUser":21,"./Push":22,"./RESTController":23,"./Storage":24,"./decode":29,"./encode":30,"babel-runtime/helpers/interop-require-default":47,"babel-runtime/helpers/interop-require-wildcard":48}],8:[function(_dereq_,module,exports){
+},{"./Analytics":1,"./Cloud":2,"./CoreManager":3,"./FacebookUtils":5,"./InstallationController":6,"./LiveQueryClient":7,"./ParseACL":11,"./ParseConfig":12,"./ParseError":13,"./ParseFile":14,"./ParseGeoPoint":15,"./ParseInstallation":16,"./ParseLiveQuery":17,"./ParseObject":18,"./ParseOp":19,"./ParsePromise":20,"./ParseQuery":21,"./ParseRelation":22,"./ParseRole":23,"./ParseSession":24,"./ParseUser":25,"./Push":26,"./RESTController":27,"./Storage":29,"./decode":35,"./encode":36,"babel-runtime/helpers/interop-require-default":56,"babel-runtime/helpers/interop-require-wildcard":57}],11:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -1264,7 +1904,11 @@ var ParseACL = (function () {
       if (userId instanceof _ParseUser2['default']) {
         userId = userId.id;
       } else if (userId instanceof _ParseRole2['default']) {
-        userId = 'role:' + userId.getName();
+        var _name = userId.getName();
+        if (!_name) {
+          throw new TypeError('Role must have a name');
+        }
+        userId = 'role:' + _name;
       }
       if (typeof userId !== 'string') {
         throw new TypeError('userId must be a string.');
@@ -1297,8 +1941,15 @@ var ParseACL = (function () {
     value: function _getAccess(accessType, userId) {
       if (userId instanceof _ParseUser2['default']) {
         userId = userId.id;
+        if (!userId) {
+          throw new Error('Cannot get access for a ParseUser without an ID');
+        }
       } else if (userId instanceof _ParseRole2['default']) {
-        userId = 'role:' + userId.getName();
+        var _name2 = userId.getName();
+        if (!_name2) {
+          throw new TypeError('Role must have a name');
+        }
+        userId = 'role:' + _name2;
       }
       var permissions = this.permissionsById[userId];
       if (!permissions) {
@@ -1501,7 +2152,7 @@ var ParseACL = (function () {
 
 exports['default'] = ParseACL;
 module.exports = exports['default'];
-},{"./ParseRole":19,"./ParseUser":21,"babel-runtime/core-js/object/keys":41,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],9:[function(_dereq_,module,exports){
+},{"./ParseRole":23,"./ParseUser":25,"babel-runtime/core-js/object/keys":49,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],12:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -1716,7 +2367,7 @@ _CoreManager2['default'].setConfigController({
   }
 });
 module.exports = exports['default'];
-},{"./CoreManager":3,"./ParseError":10,"./ParsePromise":16,"./Storage":24,"./decode":29,"./encode":30,"./escape":32,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],10:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseError":13,"./ParsePromise":20,"./Storage":29,"./decode":35,"./encode":36,"./escape":38,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],13:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -2220,7 +2871,7 @@ ParseError.FILE_READ_ERROR = 601;
  */
 ParseError.X_DOMAIN_REQUEST = 602;
 module.exports = exports["default"];
-},{"babel-runtime/helpers/class-call-check":43}],11:[function(_dereq_,module,exports){
+},{"babel-runtime/helpers/class-call-check":52}],14:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -2310,36 +2961,41 @@ var ParseFile = (function () {
 
     this._name = name;
 
-    if (Array.isArray(data)) {
-      this._source = {
-        format: 'base64',
-        base64: ParseFile.encodeBase64(data),
-        type: specifiedType
-      };
-    } else if (typeof File !== 'undefined' && data instanceof File) {
-      this._source = {
-        format: 'file',
-        file: data,
-        type: specifiedType
-      };
-    } else if (data && data.hasOwnProperty('base64')) {
-      var matches = /^data:([a-zA-Z]*\/[a-zA-Z+.-]*);(charset=[a-zA-Z0-9\-\/\s]*,)?base64,(\S+)/.exec(data.base64);
-      if (matches && matches.length > 0) {
-        // if data URI with type and charset, there will be 4 matches.
+    if (data !== undefined) {
+      if (Array.isArray(data)) {
         this._source = {
           format: 'base64',
-          base64: matches.length === 4 ? matches[3] : matches[2],
-          type: matches[1]
-        };
-      } else {
-        this._source = {
-          format: 'base64',
-          base64: data.base64,
+          base64: ParseFile.encodeBase64(data),
           type: specifiedType
         };
+      } else if (typeof File !== 'undefined' && data instanceof File) {
+        this._source = {
+          format: 'file',
+          file: data,
+          type: specifiedType
+        };
+      } else if (data && typeof data.base64 !== 'undefined') {
+        var _base64 = data.base64;
+        var commaIndex = _base64.indexOf(',');
+
+        if (commaIndex !== -1) {
+          var matches = /^data:([a-zA-Z]*\/[a-zA-Z+.-]*);(charset=[a-zA-Z0-9\-\/\s]*,)?base64,/.exec(_base64.slice(0, commaIndex + 1));
+          // if data URI with type and charset, there will be 4 matches.
+          this._source = {
+            format: 'base64',
+            base64: _base64.slice(commaIndex + 1),
+            type: matches[1]
+          };
+        } else {
+          this._source = {
+            format: 'base64',
+            base64: _base64,
+            type: specifiedType
+          };
+        }
+      } else {
+        throw new TypeError('Cannot create a Parse.File with that data.');
       }
-    } else if (typeof data !== 'undefined') {
-      throw new TypeError('Cannot create a Parse.File with that data.');
     }
   }
 
@@ -2361,12 +3017,21 @@ var ParseFile = (function () {
      * Gets the url of the file. It is only available after you save the file or
      * after you get the file from a Parse.Object.
      * @method url
+     * @param {Object} options An object to specify url options
      * @return {String}
      */
   }, {
     key: 'url',
-    value: function url() {
-      return this._url;
+    value: function url(options) {
+      options = options || {};
+      if (!this._url) {
+        return;
+      }
+      if (options.forceSecure) {
+        return this._url.replace(/^http:\/\//i, 'https://');
+      } else {
+        return this._url;
+      }
     }
 
     /**
@@ -2462,10 +3127,14 @@ _CoreManager2['default'].setFileController({
     // To directly upload a File, we use a REST-style AJAX request
     var headers = {
       'X-Parse-Application-ID': _CoreManager2['default'].get('APPLICATION_ID'),
-      'X-Parse-JavaScript-Key': _CoreManager2['default'].get('JAVASCRIPT_KEY')
+      'X-Parse-JavaScript-Key': _CoreManager2['default'].get('JAVASCRIPT_KEY'),
+      'Content-Type': source.type || (source.file ? source.file.type : null)
     };
     var url = _CoreManager2['default'].get('SERVER_URL');
-    url += '/1/files/' + name;
+    if (url[url.length - 1] !== '/') {
+      url += '/';
+    }
+    url += 'files/' + name;
     return _CoreManager2['default'].getRESTController().ajax('POST', url, source.file, headers);
   },
 
@@ -2484,7 +3153,7 @@ _CoreManager2['default'].setFileController({
   }
 });
 module.exports = exports['default'];
-},{"./CoreManager":3,"./ParsePromise":16,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],12:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParsePromise":20,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],15:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -2709,7 +3378,7 @@ var ParseGeoPoint = (function () {
 
 exports['default'] = ParseGeoPoint;
 module.exports = exports['default'];
-},{"./ParsePromise":16,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],13:[function(_dereq_,module,exports){
+},{"./ParsePromise":20,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],16:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -2760,7 +3429,243 @@ exports['default'] = Installation;
 
 _ParseObject3['default'].registerSubclass('_Installation', Installation);
 module.exports = exports['default'];
-},{"./ParseObject":14,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/get":45,"babel-runtime/helpers/inherits":46,"babel-runtime/helpers/interop-require-default":47}],14:[function(_dereq_,module,exports){
+},{"./ParseObject":18,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],17:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *
+ */
+
+'use strict';
+
+var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-default')['default'];
+
+Object.defineProperty(exports, '__esModule', {
+  value: true
+});
+
+var _EventEmitter = _dereq_('./EventEmitter');
+
+var _EventEmitter2 = _interopRequireDefault(_EventEmitter);
+
+var _LiveQueryClient = _dereq_('./LiveQueryClient');
+
+var _LiveQueryClient2 = _interopRequireDefault(_LiveQueryClient);
+
+var _CoreManager = _dereq_('./CoreManager');
+
+var _CoreManager2 = _interopRequireDefault(_CoreManager);
+
+var _ParsePromise = _dereq_('./ParsePromise');
+
+var _ParsePromise2 = _interopRequireDefault(_ParsePromise);
+
+/**
+ *
+ * We expose three events to help you monitor the status of the WebSocket connection:
+ *
+ * <p>Open - When we establish the WebSocket connection to the LiveQuery server, you'll get this event.
+ *
+ * <pre>
+ * Parse.LiveQuery.on('open', () => {
+ *
+ * });</pre></p>
+ *
+ * <p>Close - When we lose the WebSocket connection to the LiveQuery server, you'll get this event.
+ *
+ * <pre>
+ * Parse.LiveQuery.on('close', () => {
+ *
+ * });</pre></p>
+ *
+ * <p>Error - When some network error or LiveQuery server error happens, you'll get this event.
+ *
+ * <pre>
+ * Parse.LiveQuery.on('error', (error) => {
+ *
+ * });</pre></p>
+ *
+ * @class Parse.LiveQuery
+ * @static
+ *
+ */
+var LiveQuery = new _EventEmitter2['default']();
+
+/**
+ * After open is called, the LiveQuery will try to send a connect request
+ * to the LiveQuery server.
+ *
+ * @method open
+ */
+LiveQuery.open = function open() {
+  var LiveQueryController = _CoreManager2['default'].getLiveQueryController();
+  LiveQueryController.open();
+};
+
+/**
+ * When you're done using LiveQuery, you can call Parse.LiveQuery.close().
+ * This function will close the WebSocket connection to the LiveQuery server,
+ * cancel the auto reconnect, and unsubscribe all subscriptions based on it.
+ * If you call query.subscribe() after this, we'll create a new WebSocket
+ * connection to the LiveQuery server.
+ *
+ * @method close
+ */
+
+LiveQuery.close = function close() {
+  var LiveQueryController = _CoreManager2['default'].getLiveQueryController();
+  LiveQueryController.close();
+};
+// Register a default onError callback to make sure we do not crash on error
+LiveQuery.on('error', function () {});
+
+exports['default'] = LiveQuery;
+
+function getSessionToken() {
+  var controller = _CoreManager2['default'].getUserController();
+  return controller.currentUserAsync().then(function (currentUser) {
+    return currentUser ? currentUser.getSessionToken() : undefined;
+  });
+}
+
+function getLiveQueryClient() {
+  return _CoreManager2['default'].getLiveQueryController().getDefaultLiveQueryClient();
+}
+
+var defaultLiveQueryClient = undefined;
+
+_CoreManager2['default'].setLiveQueryController({
+  setDefaultLiveQueryClient: function setDefaultLiveQueryClient(liveQueryClient) {
+    defaultLiveQueryClient = liveQueryClient;
+  },
+  getDefaultLiveQueryClient: function getDefaultLiveQueryClient() {
+    if (defaultLiveQueryClient) {
+      return _ParsePromise2['default'].as(defaultLiveQueryClient);
+    }
+
+    return getSessionToken().then(function (sessionToken) {
+      var liveQueryServerURL = _CoreManager2['default'].get('LIVEQUERY_SERVER_URL');
+
+      if (liveQueryServerURL && liveQueryServerURL.indexOf('ws') !== 0) {
+        throw new Error('You need to set a proper Parse LiveQuery server url before using LiveQueryClient');
+      }
+
+      // If we can not find Parse.liveQueryServerURL, we try to extract it from Parse.serverURL
+      if (!liveQueryServerURL) {
+        var tempServerURL = _CoreManager2['default'].get('SERVER_URL');
+        var protocol = 'ws://';
+        // If Parse is being served over SSL/HTTPS, ensure LiveQuery Server uses 'wss://' prefix
+        if (tempServerURL.indexOf('https') === 0) {
+          protocol = 'wss://';
+        }
+        var host = tempServerURL.replace(/^https?:\/\//, '');
+        liveQueryServerURL = protocol + host;
+        _CoreManager2['default'].set('LIVEQUERY_SERVER_URL', liveQueryServerURL);
+      }
+
+      var applicationId = _CoreManager2['default'].get('APPLICATION_ID');
+      var javascriptKey = _CoreManager2['default'].get('JAVASCRIPT_KEY');
+      var masterKey = _CoreManager2['default'].get('MASTER_KEY');
+      // Get currentUser sessionToken if possible
+      defaultLiveQueryClient = new _LiveQueryClient2['default']({
+        applicationId: applicationId,
+        serverURL: liveQueryServerURL,
+        javascriptKey: javascriptKey,
+        masterKey: masterKey,
+        sessionToken: sessionToken
+      });
+      // Register a default onError callback to make sure we do not crash on error
+      // Cannot create these events on a nested way because of EventEmiiter from React Native
+      defaultLiveQueryClient.on('error', function (error) {
+        LiveQuery.emit('error', error);
+      });
+      defaultLiveQueryClient.on('open', function () {
+        LiveQuery.emit('open');
+      });
+      defaultLiveQueryClient.on('close', function () {
+        LiveQuery.emit('close');
+      });
+
+      return defaultLiveQueryClient;
+    });
+  },
+  open: function open() {
+    var _this = this;
+
+    getLiveQueryClient().then(function (liveQueryClient) {
+      _this.resolve(liveQueryClient.open());
+    });
+  },
+  close: function close() {
+    var _this2 = this;
+
+    getLiveQueryClient().then(function (liveQueryClient) {
+      _this2.resolve(liveQueryClient.close());
+    });
+  },
+  subscribe: function subscribe(query) {
+    var _this3 = this;
+
+    var subscriptionWrap = new _EventEmitter2['default']();
+
+    getLiveQueryClient().then(function (liveQueryClient) {
+      if (liveQueryClient.shouldOpen()) {
+        liveQueryClient.open();
+      }
+      var promiseSessionToken = getSessionToken();
+      // new event emitter
+      return promiseSessionToken.then(function (sessionToken) {
+
+        var subscription = liveQueryClient.subscribe(query, sessionToken);
+        // enter, leave create, etc
+
+        subscriptionWrap.id = subscription.id;
+        subscriptionWrap.query = subscription.query;
+        subscriptionWrap.sessionToken = subscription.sessionToken;
+        subscriptionWrap.unsubscribe = subscription.unsubscribe;
+        // Cannot create these events on a nested way because of EventEmiiter from React Native
+        subscription.on('open', function () {
+          subscriptionWrap.emit('open');
+        });
+        subscription.on('create', function (object) {
+          subscriptionWrap.emit('create', object);
+        });
+        subscription.on('update', function (object) {
+          subscriptionWrap.emit('update', object);
+        });
+        subscription.on('enter', function (object) {
+          subscriptionWrap.emit('enter', object);
+        });
+        subscription.on('leave', function (object) {
+          subscriptionWrap.emit('leave', object);
+        });
+        subscription.on('delete', function (object) {
+          subscriptionWrap.emit('delete', object);
+        });
+
+        _this3.resolve();
+      });
+    });
+    return subscriptionWrap;
+  },
+  unsubscribe: function unsubscribe(subscription) {
+    var _this4 = this;
+
+    getLiveQueryClient().then(function (liveQueryClient) {
+      _this4.resolve(liveQueryClient.unsubscribe(subscription));
+    });
+  },
+  _clearCachedDefaultClient: function _clearCachedDefaultClient() {
+    defaultLiveQueryClient = null;
+  }
+});
+module.exports = exports['default'];
+},{"./CoreManager":3,"./EventEmitter":4,"./LiveQueryClient":7,"./ParsePromise":20,"babel-runtime/helpers/interop-require-default":56}],18:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -2818,10 +3723,6 @@ var _escape2 = _dereq_('./escape');
 
 var _escape3 = _interopRequireDefault(_escape2);
 
-var _ObjectState = _dereq_('./ObjectState');
-
-var ObjectState = _interopRequireWildcard(_ObjectState);
-
 var _ParseACL = _dereq_('./ParseACL');
 
 var _ParseACL2 = _interopRequireDefault(_ParseACL);
@@ -2852,9 +3753,17 @@ var _ParseRelation = _dereq_('./ParseRelation');
 
 var _ParseRelation2 = _interopRequireDefault(_ParseRelation);
 
+var _SingleInstanceStateController = _dereq_('./SingleInstanceStateController');
+
+var SingleInstanceStateController = _interopRequireWildcard(_SingleInstanceStateController);
+
 var _unique = _dereq_('./unique');
 
 var _unique2 = _interopRequireDefault(_unique);
+
+var _UniqueInstanceStateController = _dereq_('./UniqueInstanceStateController');
+
+var UniqueInstanceStateController = _interopRequireWildcard(_UniqueInstanceStateController);
 
 var _unsavedChildren = _dereq_('./unsavedChildren');
 
@@ -2872,6 +3781,20 @@ var objectCount = 0;
 // will have the same attributes. However, this may be dangerous default
 // behavior in a server scenario
 var singleInstance = !_CoreManager2['default'].get('IS_NODE');
+if (singleInstance) {
+  _CoreManager2['default'].setObjectStateController(SingleInstanceStateController);
+} else {
+  _CoreManager2['default'].setObjectStateController(UniqueInstanceStateController);
+}
+
+function getServerUrlPath() {
+  var serverUrl = _CoreManager2['default'].get('SERVER_URL');
+  if (serverUrl[serverUrl.length - 1] !== '/') {
+    serverUrl += '/';
+  }
+  var url = serverUrl.replace(/https?:\/\//, '');
+  return url.substr(url.indexOf('/'));
+}
 
 /**
  * Creates a new model with defined attributes.
@@ -2893,11 +3816,17 @@ var singleInstance = !_CoreManager2['default'].get('IS_NODE');
  * @constructor
  * @param {String} className The class name for the object
  * @param {Object} attributes The initial set of data to store in the object.
+ * @param {Object} options The options for this object instance.
  */
 
 var ParseObject = (function () {
-  function ParseObject(className, attributes) {
+  function ParseObject(className, attributes, options) {
     _classCallCheck(this, ParseObject);
+
+    // Enable legacy initializers
+    if (typeof this.initialize === 'function') {
+      this.initialize.apply(this, arguments);
+    }
 
     var toSet = null;
     this._objCount = objectCount++;
@@ -2914,13 +3843,12 @@ var ParseObject = (function () {
           toSet[attr] = className[attr];
         }
       }
+      if (attributes && typeof attributes === 'object') {
+        options = attributes;
+      }
     }
-    if (toSet && !this.set(toSet)) {
+    if (toSet && !this.set(toSet, options)) {
       throw new Error('Can\'t create an invalid Parse Object');
-    }
-    // Enable legacy initializers
-    if (typeof this.initialize === 'function') {
-      this.initialize.apply(this, arguments);
     }
   }
 
@@ -2947,25 +3875,29 @@ var ParseObject = (function () {
     }
 
     /**
-     * Returns a local or server Id used to pull data from the Object State store
-     * If single instance objects are disabled, it will use the object's unique
-     * count to separate its data from other objects with the same server Id.
+     * Returns a unique identifier used to pull data from the State Controller.
      */
   }, {
     key: '_getStateIdentifier',
     value: function _getStateIdentifier() {
-      if (typeof this.id === 'string') {
-        if (singleInstance) {
-          return this.id;
+      if (singleInstance) {
+        var _id = this.id;
+        if (!_id) {
+          _id = this._getId();
         }
-        return this.id + '_' + String(this._objCount);
+        return {
+          id: _id,
+          className: this.className
+        };
+      } else {
+        return this;
       }
-      return this._getId();
     }
   }, {
     key: '_getServerData',
     value: function _getServerData() {
-      return ObjectState.getServerData(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      return stateController.getServerData(this._getStateIdentifier());
     }
   }, {
     key: '_clearServerData',
@@ -2975,12 +3907,14 @@ var ParseObject = (function () {
       for (var attr in serverData) {
         unset[attr] = undefined;
       }
-      ObjectState.setServerData(this.className, this._getStateIdentifier(), unset);
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      stateController.setServerData(this._getStateIdentifier(), unset);
     }
   }, {
     key: '_getPendingOps',
     value: function _getPendingOps() {
-      return ObjectState.getPendingOps(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      return stateController.getPendingOps(this._getStateIdentifier());
     }
   }, {
     key: '_clearPendingOps',
@@ -2996,16 +3930,23 @@ var ParseObject = (function () {
     key: '_getDirtyObjectAttributes',
     value: function _getDirtyObjectAttributes() {
       var attributes = this.attributes;
-      var objectCache = ObjectState.getObjectCache(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      var objectCache = stateController.getObjectCache(this._getStateIdentifier());
       var dirty = {};
       for (var attr in attributes) {
         var val = attributes[attr];
         if (val && typeof val === 'object' && !(val instanceof ParseObject) && !(val instanceof _ParseFile2['default']) && !(val instanceof _ParseRelation2['default'])) {
           // Due to the way browsers construct maps, the key order will not change
           // unless the object is changed
-          var json = (0, _encode2['default'])(val, false, true);
-          var stringified = JSON.stringify(json);
-          if (objectCache[attr] !== stringified) {
+          try {
+            var json = (0, _encode2['default'])(val, false, true);
+            var stringified = JSON.stringify(json);
+            if (objectCache[attr] !== stringified) {
+              dirty[attr] = val;
+            }
+          } catch (e) {
+            // Error occurred, possibly by a nested unsaved pointer in a mutable container
+            // No matter how it happened, it indicates a change in the attribute
             dirty[attr] = val;
           }
         }
@@ -3014,8 +3955,8 @@ var ParseObject = (function () {
     }
   }, {
     key: '_toFullJSON',
-    value: function _toFullJSON() {
-      var json = this.toJSON();
+    value: function _toFullJSON(seen) {
+      var json = this.toJSON(seen);
       json.__type = 'Object';
       json.className = this.className;
       return json;
@@ -3058,7 +3999,8 @@ var ParseObject = (function () {
       if (!this.id && serverData.objectId) {
         this.id = serverData.objectId;
       }
-      ObjectState.initializeState(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      stateController.initializeState(this._getStateIdentifier());
       var decoded = {};
       for (var attr in serverData) {
         if (attr === 'ACL') {
@@ -3079,12 +4021,13 @@ var ParseObject = (function () {
       if (!decoded.updatedAt && decoded.createdAt) {
         decoded.updatedAt = decoded.createdAt;
       }
-      ObjectState.commitServerChanges(this.className, this._getStateIdentifier(), decoded);
+      stateController.commitServerChanges(this._getStateIdentifier(), decoded);
     }
   }, {
     key: '_setExisted',
     value: function _setExisted(existed) {
-      var state = ObjectState.getState(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      var state = stateController.getState(this._getStateIdentifier());
       if (state) {
         state.existed = existed;
       }
@@ -3093,11 +4036,17 @@ var ParseObject = (function () {
     key: '_migrateId',
     value: function _migrateId(serverId) {
       if (this._localId && serverId) {
-        var oldState = ObjectState.removeState(this.className, this._getStateIdentifier());
-        this.id = serverId;
-        delete this._localId;
-        if (oldState) {
-          ObjectState.initializeState(this.className, this._getStateIdentifier(), oldState);
+        if (singleInstance) {
+          var stateController = _CoreManager2['default'].getObjectStateController();
+          var oldState = stateController.removeState(this._getStateIdentifier());
+          this.id = serverId;
+          delete this._localId;
+          if (oldState) {
+            stateController.initializeState(this._getStateIdentifier(), oldState);
+          }
+        } else {
+          this.id = serverId;
+          delete this._localId;
         }
       }
     }
@@ -3106,7 +4055,8 @@ var ParseObject = (function () {
     value: function _handleSaveResponse(response, status) {
       var changes = {};
       var attr;
-      var pending = ObjectState.popPendingState(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      var pending = stateController.popPendingState(this._getStateIdentifier());
       for (attr in pending) {
         if (pending[attr] instanceof _ParseOp.RelationOp) {
           changes[attr] = pending[attr].applyTo(undefined, this, attr);
@@ -3118,8 +4068,13 @@ var ParseObject = (function () {
       for (attr in response) {
         if ((attr === 'createdAt' || attr === 'updatedAt') && typeof response[attr] === 'string') {
           changes[attr] = (0, _parseDate2['default'])(response[attr]);
+        } else if (attr === 'ACL') {
+          changes[attr] = new _ParseACL2['default'](response[attr]);
         } else if (attr !== 'objectId') {
           changes[attr] = (0, _decode2['default'])(response[attr]);
+          if (changes[attr] instanceof _ParseOp.UnsetOp) {
+            changes[attr] = undefined;
+          }
         }
       }
       if (changes.createdAt && !changes.updatedAt) {
@@ -3132,16 +4087,14 @@ var ParseObject = (function () {
         this._setExisted(true);
       }
 
-      ObjectState.commitServerChanges(this.className, this._getStateIdentifier(), changes);
+      stateController.commitServerChanges(this._getStateIdentifier(), changes);
     }
   }, {
     key: '_handleSaveError',
     value: function _handleSaveError() {
       var pending = this._getPendingOps();
-      if (pending.length > 2) {
-        // There are more saves on the queue
-        ObjectState.mergeFirstPendingState(this.className, this._getStateIdentifier());
-      }
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      stateController.mergeFirstPendingState(this._getStateIdentifier());
     }
 
     /** Public methods **/
@@ -3159,15 +4112,16 @@ var ParseObject = (function () {
 
   }, {
     key: 'toJSON',
-    value: function toJSON() {
+    value: function toJSON(seen) {
       var seenEntry = this.id ? this.className + ':' + this.id : this;
+      var seen = seen || [seenEntry];
       var json = {};
       var attrs = this.attributes;
       for (var attr in attrs) {
         if ((attr === 'createdAt' || attr === 'updatedAt') && attrs[attr].toJSON) {
           json[attr] = attrs[attr].toJSON();
         } else {
-          json[attr] = (0, _encode2['default'])(attrs[attr], false, false, [seenEntry]);
+          json[attr] = (0, _encode2['default'])(attrs[attr], false, false, seen);
         }
       }
       var pending = this._getPendingOps();
@@ -3404,7 +4358,9 @@ var ParseObject = (function () {
         } else if (changes[k] && typeof changes[k] === 'object' && typeof changes[k].__op === 'string') {
           newOps[k] = (0, _ParseOp.opFromJSON)(changes[k]);
         } else if (k === 'objectId' || k === 'id') {
-          this.id = changes[k];
+          if (typeof changes[k] === 'string') {
+            this.id = changes[k];
+          }
         } else if (k === 'ACL' && typeof changes[k] === 'object' && !(changes[k] instanceof _ParseACL2['default'])) {
           newOps[k] = new _ParseOp.SetOp(new _ParseACL2['default'](changes[k]));
         } else {
@@ -3424,20 +4380,23 @@ var ParseObject = (function () {
       }
 
       // Validate changes
-      var validation = this.validate(newValues);
-      if (validation) {
-        if (typeof options.error === 'function') {
-          options.error(this, validation);
+      if (!options.ignoreValidation) {
+        var validation = this.validate(newValues);
+        if (validation) {
+          if (typeof options.error === 'function') {
+            options.error(this, validation);
+          }
+          return false;
         }
-        return false;
       }
 
       // Consolidate Ops
       var pendingOps = this._getPendingOps();
       var last = pendingOps.length - 1;
+      var stateController = _CoreManager2['default'].getObjectStateController();
       for (var attr in newOps) {
         var nextOp = newOps[attr].mergeWith(pendingOps[last][attr]);
-        ObjectState.setPendingOp(this.className, this._getStateIdentifier(), attr, nextOp);
+        stateController.setPendingOp(this._getStateIdentifier(), attr, nextOp);
       }
 
       return this;
@@ -3541,7 +4500,7 @@ var ParseObject = (function () {
     }
 
     /**
-     * Creates a new model with identical attributes to this one.
+     * Creates a new model with identical attributes to this one, similar to Backbone.Model's clone()
      * @method clone
      * @return {Parse.Object}
      */
@@ -3549,11 +4508,49 @@ var ParseObject = (function () {
     key: 'clone',
     value: function clone() {
       var clone = new this.constructor();
-      if (clone.set) {
-        clone.set(this.attributes);
-      }
       if (!clone.className) {
         clone.className = this.className;
+      }
+      var attributes = this.attributes;
+      if (typeof this.constructor.readOnlyAttributes === 'function') {
+        var readonly = this.constructor.readOnlyAttributes() || [];
+        // Attributes are frozen, so we have to rebuild an object,
+        // rather than delete readonly keys
+        var copy = {};
+        for (var a in attributes) {
+          if (readonly.indexOf(a) < 0) {
+            copy[a] = attributes[a];
+          }
+        }
+        attributes = copy;
+      }
+      if (clone.set) {
+        clone.set(attributes);
+      }
+      return clone;
+    }
+
+    /**
+     * Creates a new instance of this object. Not to be confused with clone()
+     * @method newInstance
+     * @return {Parse.Object}
+     */
+  }, {
+    key: 'newInstance',
+    value: function newInstance() {
+      var clone = new this.constructor();
+      if (!clone.className) {
+        clone.className = this.className;
+      }
+      clone.id = this.id;
+      if (singleInstance) {
+        // Just return an object with the right id
+        return clone;
+      }
+
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      if (stateController) {
+        stateController.duplicateState(this._getStateIdentifier(), clone._getStateIdentifier());
       }
       return clone;
     }
@@ -3582,7 +4579,8 @@ var ParseObject = (function () {
       if (!this.id) {
         return false;
       }
-      var state = ObjectState.getState(this.className, this._getStateIdentifier());
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      var state = stateController.getState(this._getStateIdentifier());
       if (state) {
         return state.existed;
       }
@@ -3654,6 +4652,16 @@ var ParseObject = (function () {
     key: 'setACL',
     value: function setACL(acl, options) {
       return this.set('ACL', acl, options);
+    }
+
+    /**
+     * Clears any changes to this object made since the last call to save()
+     * @method revert
+     */
+  }, {
+    key: 'revert',
+    value: function revert() {
+      this._clearPendingOps();
     }
 
     /**
@@ -3765,7 +4773,9 @@ var ParseObject = (function () {
       var options;
       if (typeof arg1 === 'object' || typeof arg1 === 'undefined') {
         attrs = arg1;
-        options = arg2;
+        if (typeof arg2 === 'object') {
+          options = arg2;
+        }
       } else {
         attrs = {};
         attrs[arg1] = arg2;
@@ -3799,9 +4809,9 @@ var ParseObject = (function () {
       options = options || {};
       var saveOptions = {};
       if (options.hasOwnProperty('useMasterKey')) {
-        saveOptions.useMasterKey = options.useMasterKey;
+        saveOptions.useMasterKey = !!options.useMasterKey;
       }
-      if (options.hasOwnProperty('sessionToken')) {
+      if (options.hasOwnProperty('sessionToken') && typeof options.sessionToken === 'string') {
         saveOptions.sessionToken = options.sessionToken;
       }
 
@@ -3852,7 +4862,8 @@ var ParseObject = (function () {
   }, {
     key: 'attributes',
     get: function get() {
-      return _Object$freeze(ObjectState.estimateAttributes(this.className, this._getStateIdentifier()));
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      return _Object$freeze(stateController.estimateAttributes(this._getStateIdentifier()));
     }
 
     /**
@@ -3879,7 +4890,8 @@ var ParseObject = (function () {
   }], [{
     key: '_clearAllState',
     value: function _clearAllState() {
-      ObjectState._clearAllState();
+      var stateController = _CoreManager2['default'].getObjectStateController();
+      stateController.clearAllState();
     }
 
     /**
@@ -4098,12 +5110,14 @@ var ParseObject = (function () {
      * Creates a new instance of a Parse Object from a JSON representation.
      * @method fromJSON
      * @param {Object} json The JSON map of the Object's data
+     * @param {boolean} override In single instance mode, all old server data
+     *   is overwritten if this is set to true
      * @static
      * @return {Parse.Object} A Parse.Object reference
      */
   }, {
     key: 'fromJSON',
-    value: function fromJSON(json) {
+    value: function fromJSON(json, override) {
       if (!json.className) {
         throw new Error('Cannot create an object without a className');
       }
@@ -4113,6 +5127,20 @@ var ParseObject = (function () {
       for (var attr in json) {
         if (attr !== 'className' && attr !== '__type') {
           otherAttributes[attr] = json[attr];
+        }
+      }
+      if (override) {
+        // id needs to be set before clearServerData can work
+        if (otherAttributes.objectId) {
+          o.id = otherAttributes.objectId;
+        }
+        var preserved = null;
+        if (typeof o._preserveFieldsOnFetch === 'function') {
+          preserved = o._preserveFieldsOnFetch();
+        }
+        o._clearServerData();
+        if (preserved) {
+          o._finishFetch(preserved);
         }
       }
       o._finishFetch(otherAttributes);
@@ -4209,17 +5237,18 @@ var ParseObject = (function () {
       } else if (classMap[adjustedClassName]) {
         parentProto = classMap[adjustedClassName].prototype;
       }
-      var ParseObjectSubclass = function ParseObjectSubclass(attributes) {
+      var ParseObjectSubclass = function ParseObjectSubclass(attributes, options) {
         this.className = adjustedClassName;
         this._objCount = objectCount++;
-        if (attributes && typeof attributes === 'object') {
-          if (!this.set(attributes || {})) {
-            throw new Error('Can\'t create an invalid Parse Object');
-          }
-        }
         // Enable legacy initializers
         if (typeof this.initialize === 'function') {
           this.initialize.apply(this, arguments);
+        }
+
+        if (attributes && typeof attributes === 'object') {
+          if (!this.set(attributes || {}, options)) {
+            throw new Error('Can\'t create an invalid Parse Object');
+          }
         }
       };
       ParseObjectSubclass.className = adjustedClassName;
@@ -4283,6 +5312,7 @@ var ParseObject = (function () {
     key: 'enableSingleInstance',
     value: function enableSingleInstance() {
       singleInstance = true;
+      _CoreManager2['default'].setObjectStateController(SingleInstanceStateController);
     }
 
     /**
@@ -4296,6 +5326,7 @@ var ParseObject = (function () {
     key: 'disableSingleInstance',
     value: function disableSingleInstance() {
       singleInstance = false;
+      _CoreManager2['default'].setObjectStateController(UniqueInstanceStateController);
     }
   }]);
 
@@ -4371,6 +5402,7 @@ _CoreManager2['default'].setObjectController({
       return RESTController.request('GET', 'classes/' + target.className + '/' + target._getId(), {}, options).then(function (response, status, xhr) {
         if (target instanceof ParseObject) {
           target._clearPendingOps();
+          target._clearServerData();
           target._finishFetch(response);
         }
         return target;
@@ -4406,7 +5438,7 @@ _CoreManager2['default'].setObjectController({
             requests: batch.map(function (obj) {
               return {
                 method: 'DELETE',
-                path: '/1/classes/' + obj.className + '/' + obj._getId(),
+                path: getServerUrlPath() + 'classes/' + obj.className + '/' + obj._getId(),
                 body: {}
               };
             })
@@ -4439,6 +5471,7 @@ _CoreManager2['default'].setObjectController({
 
   save: function save(target, options) {
     var RESTController = _CoreManager2['default'].getRESTController();
+    var stateController = _CoreManager2['default'].getObjectStateController();
     if (Array.isArray(target)) {
       if (target.length < 1) {
         return _ParsePromise2['default'].as([]);
@@ -4507,8 +5540,8 @@ _CoreManager2['default'].setObjectController({
                 }
               });
             };
-            ObjectState.pushPendingState(obj.className, obj._getStateIdentifier());
-            batchTasks.push(ObjectState.enqueueTask(obj.className, obj._getStateIdentifier(), task));
+            stateController.pushPendingState(obj._getStateIdentifier());
+            batchTasks.push(stateController.enqueueTask(obj._getStateIdentifier(), task));
           });
 
           _ParsePromise2['default'].when(batchReady).then(function () {
@@ -4516,7 +5549,7 @@ _CoreManager2['default'].setObjectController({
             return RESTController.request('POST', 'batch', {
               requests: batch.map(function (obj) {
                 var params = obj._getSaveParams();
-                params.path = '/1/' + params.path;
+                params.path = getServerUrlPath() + params.path;
                 return params;
               })
             }, options);
@@ -4544,11 +5577,12 @@ _CoreManager2['default'].setObjectController({
           return _ParsePromise2['default'].error(error);
         });
       };
-      ObjectState.pushPendingState(target.className, target._getStateIdentifier());
-      return ObjectState.enqueueTask(target.className, target._getStateIdentifier(), task).then(function () {
+
+      stateController.pushPendingState(target._getStateIdentifier());
+      return stateController.enqueueTask(target._getStateIdentifier(), task).then(function () {
         return target;
       }, function (error) {
-        return error;
+        return _ParsePromise2['default'].error(error);
       });
     }
     return _ParsePromise2['default'].as();
@@ -4561,7 +5595,7 @@ module.exports = exports['default'];
  * @property id
  * @type String
  */
-},{"./CoreManager":3,"./ObjectState":6,"./ParseACL":8,"./ParseError":10,"./ParseFile":11,"./ParseOp":15,"./ParsePromise":16,"./ParseQuery":17,"./ParseRelation":18,"./canBeSerialized":28,"./decode":29,"./encode":30,"./equals":31,"./escape":32,"./parseDate":34,"./unique":35,"./unsavedChildren":36,"babel-runtime/core-js/object/create":37,"babel-runtime/core-js/object/define-property":38,"babel-runtime/core-js/object/freeze":39,"babel-runtime/core-js/object/keys":41,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47,"babel-runtime/helpers/interop-require-wildcard":48}],15:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseACL":11,"./ParseError":13,"./ParseFile":14,"./ParseOp":19,"./ParsePromise":20,"./ParseQuery":21,"./ParseRelation":22,"./SingleInstanceStateController":28,"./UniqueInstanceStateController":32,"./canBeSerialized":34,"./decode":35,"./encode":36,"./equals":37,"./escape":38,"./parseDate":40,"./unique":41,"./unsavedChildren":42,"babel-runtime/core-js/object/create":45,"babel-runtime/core-js/object/define-property":46,"babel-runtime/core-js/object/freeze":47,"babel-runtime/core-js/object/keys":49,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56,"babel-runtime/helpers/interop-require-wildcard":57}],19:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -5027,6 +6061,9 @@ var RelationOp = (function (_Op7) {
     key: 'applyTo',
     value: function applyTo(value, object, key) {
       if (!value) {
+        if (!object || !key) {
+          throw new Error('Cannot apply a RelationOp without either a previous value, or an object and a key');
+        }
         var parent = new _ParseObject2['default'](object.className);
         if (object.id && object.id.indexOf('local') === 0) {
           parent._localId = object.id;
@@ -5135,7 +6172,8 @@ var RelationOp = (function (_Op7) {
 })(Op);
 
 exports.RelationOp = RelationOp;
-},{"./ParseObject":14,"./ParseRelation":18,"./arrayContainsObject":27,"./decode":29,"./encode":30,"./unique":35,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/get":45,"babel-runtime/helpers/inherits":46,"babel-runtime/helpers/interop-require-default":47}],16:[function(_dereq_,module,exports){
+},{"./ParseObject":18,"./ParseRelation":22,"./arrayContainsObject":33,"./decode":35,"./encode":36,"./unique":41,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],20:[function(_dereq_,module,exports){
+(function (process){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -5145,18 +6183,18 @@ exports.RelationOp = RelationOp;
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
-// We may want to expose this value at a later time, so that Promises/A+ style
-// can be employed instead
 'use strict';
 
 var _createClass = _dereq_('babel-runtime/helpers/create-class')['default'];
 
 var _classCallCheck = _dereq_('babel-runtime/helpers/class-call-check')['default'];
 
+var _getIterator = _dereq_('babel-runtime/core-js/get-iterator')['default'];
+
 Object.defineProperty(exports, '__esModule', {
   value: true
 });
-var _isPromisesAPlusCompliant = false;
+var _isPromisesAPlusCompliant = true;
 
 /**
  * A Promise is returned by async methods as a hook to provide callbacks to be
@@ -5176,13 +6214,17 @@ var _isPromisesAPlusCompliant = false;
  */
 
 var ParsePromise = (function () {
-  function ParsePromise() {
+  function ParsePromise(executor) {
     _classCallCheck(this, ParsePromise);
 
     this._resolved = false;
     this._rejected = false;
     this._resolvedCallbacks = [];
     this._rejectedCallbacks = [];
+
+    if (typeof executor === 'function') {
+      executor(this.resolve.bind(this), this.reject.bind(this));
+    }
   }
 
   /**
@@ -5221,7 +6263,7 @@ var ParsePromise = (function () {
     key: 'reject',
     value: function reject(error) {
       if (this._resolved || this._rejected) {
-        throw new Error('A promise was resolved even though it had already been ' + (this._resolved ? 'resolved' : 'rejected') + '.');
+        throw new Error('A promise was rejected even though it had already been ' + (this._resolved ? 'resolved' : 'rejected') + '.');
       }
       this._rejected = true;
       this._error = error;
@@ -5265,7 +6307,15 @@ var ParsePromise = (function () {
         }
 
         if (typeof resolvedCallback === 'function') {
-          results = [resolvedCallback.apply(this, results)];
+          if (_isPromisesAPlusCompliant) {
+            try {
+              results = [resolvedCallback.apply(this, results)];
+            } catch (e) {
+              results = [ParsePromise.error(e)];
+            }
+          } else {
+            results = [resolvedCallback.apply(this, results)];
+          }
         }
         if (results.length === 1 && ParsePromise.is(results[0])) {
           results[0].then(function () {
@@ -5281,8 +6331,15 @@ var ParsePromise = (function () {
       var wrappedRejectedCallback = function wrappedRejectedCallback(error) {
         var result = [];
         if (typeof rejectedCallback === 'function') {
-          result = [rejectedCallback(error)];
-
+          if (_isPromisesAPlusCompliant) {
+            try {
+              result = [rejectedCallback(error)];
+            } catch (e) {
+              result = [ParsePromise.error(e)];
+            }
+          } else {
+            result = [rejectedCallback(error)];
+          }
           if (result.length === 1 && ParsePromise.is(result[0])) {
             result[0].then(function () {
               promise.resolve.apply(promise, arguments);
@@ -5290,7 +6347,11 @@ var ParsePromise = (function () {
               promise.reject(error);
             });
           } else {
-            promise.reject(result[0]);
+            if (_isPromisesAPlusCompliant) {
+              promise.resolve.apply(promise, result);
+            } else {
+              promise.reject(result[0]);
+            }
           }
         } else {
           promise.reject(error);
@@ -5300,6 +6361,17 @@ var ParsePromise = (function () {
       var runLater = function runLater(fn) {
         fn.call();
       };
+      if (_isPromisesAPlusCompliant) {
+        if (typeof process !== 'undefined' && typeof process.nextTick === 'function') {
+          runLater = function (fn) {
+            process.nextTick(fn);
+          };
+        } else if (typeof setTimeout === 'function') {
+          runLater = function (fn) {
+            setTimeout(fn, 0);
+          };
+        }
+      }
 
       if (this._resolved) {
         runLater(function () {
@@ -5340,11 +6412,22 @@ var ParsePromise = (function () {
 
     /**
      * Add handlers to be called when the Promise object is rejected
+     * Alias for catch().
      * @method fail
      */
   }, {
     key: 'fail',
     value: function fail(callback) {
+      return this.then(null, callback);
+    }
+
+    /**
+     * Add handlers to be called when the Promise object is rejected
+     * @method catch
+     */
+  }, {
+    key: 'catch',
+    value: function _catch(callback) {
       return this.then(null, callback);
     }
 
@@ -5431,7 +6514,7 @@ var ParsePromise = (function () {
   }], [{
     key: 'is',
     value: function is(promise) {
-      return typeof promise !== 'undefined' && typeof promise.then === 'function';
+      return promise != null && typeof promise.then === 'function';
     }
 
     /**
@@ -5455,6 +6538,28 @@ var ParsePromise = (function () {
     }
 
     /**
+     * Returns a new promise that is resolved with a given value.
+     * If that value is a thenable Promise (has a .then() prototype
+     * method), the new promise will be chained to the end of the
+     * value.
+     * @method resolve
+     * @param value The value to resolve the promise with
+     * @static
+     * @return {Parse.Promise} the new promise.
+     */
+  }, {
+    key: 'resolve',
+    value: function resolve(value) {
+      return new ParsePromise(function (resolve, reject) {
+        if (ParsePromise.is(value)) {
+          value.then(resolve, reject);
+        } else {
+          resolve(value);
+        }
+      });
+    }
+
+    /**
      * Returns a new promise that is rejected with a given error.
      * @method error
      * @param error The error to reject the promise with
@@ -5475,10 +6580,30 @@ var ParsePromise = (function () {
     }
 
     /**
+     * Returns a new promise that is rejected with a given error.
+     * This is an alias for Parse.Promise.error, for compliance with
+     * the ES6 implementation.
+     * @method reject
+     * @param error The error to reject the promise with
+     * @static
+     * @return {Parse.Promise} the new promise.
+     */
+  }, {
+    key: 'reject',
+    value: function reject() {
+      for (var _len6 = arguments.length, errors = Array(_len6), _key6 = 0; _key6 < _len6; _key6++) {
+        errors[_key6] = arguments[_key6];
+      }
+
+      return ParsePromise.error.apply(null, errors);
+    }
+
+    /**
      * Returns a new promise that is fulfilled when all of the input promises
      * are resolved. If any promise in the list fails, then the returned promise
-     * will fail with the last error. If they all succeed, then the returned
-     * promise will succeed, with the results being the results of all the input
+     * will be rejected with an array containing the error from each promise.
+     * If they all succeed, then the returned promise will succeed, with the
+     * results being the results of all the input
      * promises. For example: <pre>
      *   var p1 = Parse.Promise.as(1);
      *   var p2 = Parse.Promise.as(2);
@@ -5492,10 +6617,8 @@ var ParsePromise = (function () {
      *
      * The input promises can also be specified as an array: <pre>
      *   var promises = [p1, p2, p3];
-     *   Parse.Promise.when(promises).then(function(r1, r2, r3) {
-     *     console.log(r1);  // prints 1
-     *     console.log(r2);  // prints 2
-     *     console.log(r3);  // prints 3
+     *   Parse.Promise.when(promises).then(function(results) {
+     *     console.log(results);  // prints [1,2,3]
      *   });
      * </pre>
      * @method when
@@ -5507,7 +6630,8 @@ var ParsePromise = (function () {
     key: 'when',
     value: function when(promises) {
       var objects;
-      if (Array.isArray(promises)) {
+      var arrayArgument = Array.isArray(promises);
+      if (arrayArgument) {
         objects = promises;
       } else {
         objects = arguments;
@@ -5516,12 +6640,13 @@ var ParsePromise = (function () {
       var total = objects.length;
       var hadError = false;
       var results = [];
+      var returnValue = arrayArgument ? [results] : results;
       var errors = [];
       results.length = objects.length;
       errors.length = objects.length;
 
       if (total === 0) {
-        return ParsePromise.as.apply(this, results);
+        return ParsePromise.as.apply(this, returnValue);
       }
 
       var promise = new ParsePromise();
@@ -5532,7 +6657,7 @@ var ParsePromise = (function () {
           if (hadError) {
             promise.reject(errors);
           } else {
-            promise.resolve.apply(promise, results);
+            promise.resolve.apply(promise, returnValue);
           }
         }
       };
@@ -5554,6 +6679,161 @@ var ParsePromise = (function () {
       };
       for (var i = 0; i < objects.length; i++) {
         chain(objects[i], i);
+      }
+
+      return promise;
+    }
+
+    /**
+     * Returns a new promise that is fulfilled when all of the promises in the
+     * iterable argument are resolved. If any promise in the list fails, then
+     * the returned promise will be immediately rejected with the reason that
+     * single promise rejected. If they all succeed, then the returned promise
+     * will succeed, with the results being the results of all the input
+     * promises. If the iterable provided is empty, the returned promise will
+     * be immediately resolved.
+     *
+     * For example: <pre>
+     *   var p1 = Parse.Promise.as(1);
+     *   var p2 = Parse.Promise.as(2);
+     *   var p3 = Parse.Promise.as(3);
+     *
+     *   Parse.Promise.all([p1, p2, p3]).then(function([r1, r2, r3]) {
+     *     console.log(r1);  // prints 1
+     *     console.log(r2);  // prints 2
+     *     console.log(r3);  // prints 3
+     *   });</pre>
+     *
+     * @method all
+     * @param {Iterable} promises an iterable of promises to wait for.
+     * @static
+     * @return {Parse.Promise} the new promise.
+     */
+  }, {
+    key: 'all',
+    value: function all(promises) {
+      var total = 0;
+      var objects = [];
+
+      var _iteratorNormalCompletion = true;
+      var _didIteratorError = false;
+      var _iteratorError = undefined;
+
+      try {
+        for (var _iterator = _getIterator(promises), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+          var p = _step.value;
+
+          objects[total++] = p;
+        }
+      } catch (err) {
+        _didIteratorError = true;
+        _iteratorError = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion && _iterator['return']) {
+            _iterator['return']();
+          }
+        } finally {
+          if (_didIteratorError) {
+            throw _iteratorError;
+          }
+        }
+      }
+
+      if (total === 0) {
+        return ParsePromise.as([]);
+      }
+
+      var hadError = false;
+      var promise = new ParsePromise();
+      var resolved = 0;
+      var results = [];
+      objects.forEach(function (object, i) {
+        if (ParsePromise.is(object)) {
+          object.then(function (result) {
+            if (hadError) {
+              return false;
+            }
+            results[i] = result;
+            resolved++;
+            if (resolved >= total) {
+              promise.resolve(results);
+            }
+          }, function (error) {
+            // Reject immediately
+            promise.reject(error);
+            hadError = true;
+          });
+        } else {
+          results[i] = object;
+          resolved++;
+          if (!hadError && resolved >= total) {
+            promise.resolve(results);
+          }
+        }
+      });
+
+      return promise;
+    }
+
+    /**
+     * Returns a new promise that is immediately fulfilled when any of the
+     * promises in the iterable argument are resolved or rejected. If the
+     * first promise to complete is resolved, the returned promise will be
+     * resolved with the same value. Likewise, if the first promise to
+     * complete is rejected, the returned promise will be rejected with the
+     * same reason.
+     *
+     * @method race
+     * @param {Iterable} promises an iterable of promises to wait for.
+     * @static
+     * @return {Parse.Promise} the new promise.
+     */
+  }, {
+    key: 'race',
+    value: function race(promises) {
+      var completed = false;
+      var promise = new ParsePromise();
+      var _iteratorNormalCompletion2 = true;
+      var _didIteratorError2 = false;
+      var _iteratorError2 = undefined;
+
+      try {
+        for (var _iterator2 = _getIterator(promises), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+          var p = _step2.value;
+
+          if (ParsePromise.is(p)) {
+            p.then(function (result) {
+              if (completed) {
+                return;
+              }
+              completed = true;
+              promise.resolve(result);
+            }, function (error) {
+              if (completed) {
+                return;
+              }
+              completed = true;
+              promise.reject(error);
+            });
+          } else if (!completed) {
+            completed = true;
+            promise.resolve(p);
+          }
+        }
+      } catch (err) {
+        _didIteratorError2 = true;
+        _iteratorError2 = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion2 && _iterator2['return']) {
+            _iterator2['return']();
+          }
+        } finally {
+          if (_didIteratorError2) {
+            throw _iteratorError2;
+          }
+        }
       }
 
       return promise;
@@ -5583,6 +6863,16 @@ var ParsePromise = (function () {
     value: function isPromisesAPlusCompliant() {
       return _isPromisesAPlusCompliant;
     }
+  }, {
+    key: 'enableAPlusCompliant',
+    value: function enableAPlusCompliant() {
+      _isPromisesAPlusCompliant = true;
+    }
+  }, {
+    key: 'disableAPlusCompliant',
+    value: function disableAPlusCompliant() {
+      _isPromisesAPlusCompliant = false;
+    }
   }]);
 
   return ParsePromise;
@@ -5590,7 +6880,8 @@ var ParsePromise = (function () {
 
 exports['default'] = ParsePromise;
 module.exports = exports['default'];
-},{"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44}],17:[function(_dereq_,module,exports){
+}).call(this,_dereq_('_process'))
+},{"_process":58,"babel-runtime/core-js/get-iterator":43,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53}],21:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -5651,8 +6942,7 @@ function quote(s) {
  * Creates a new parse Parse.Query for the given Parse.Object subclass.
  * @class Parse.Query
  * @constructor
- * @param objectClass -
- *   An instance of a subclass of Parse.Object, or a Parse className string.
+ * @param {} objectClass An instance of a subclass of Parse.Object, or a Parse className string.
  *
  * <p>Parse.Query defines a query that is used to fetch Parse.Objects. The
  * most common use case is finding all objects that match a query through the
@@ -5881,8 +7171,13 @@ var ParseQuery = (function () {
 
       return controller.find(this.className, this.toJSON(), findOptions).then(function (response) {
         return response.results.map(function (data) {
-          data.className = _this.className;
-          return _ParseObject2['default'].fromJSON(data);
+          // In cases of relations, the server may send back a className
+          // on the top level of the payload
+          var override = response.className || _this.className;
+          if (!data.className) {
+            data.className = override;
+          }
+          return _ParseObject2['default'].fromJSON(data, true);
         });
       })._thenRunCallbacks(options);
     }
@@ -5975,8 +7270,10 @@ var ParseQuery = (function () {
         if (!objects[0]) {
           return undefined;
         }
-        objects[0].className = _this2.className;
-        return _ParseObject2['default'].fromJSON(objects[0]);
+        if (!objects[0].className) {
+          objects[0].className = _this2.className;
+        }
+        return _ParseObject2['default'].fromJSON(objects[0], true);
       })._thenRunCallbacks(options);
     }
 
@@ -5990,9 +7287,15 @@ var ParseQuery = (function () {
      * @method each
      * @param {Function} callback Callback that will be called with each result
      *     of the query.
-     * @param {Object} options An optional Backbone-like options object with
-     *     success and error callbacks that will be invoked once the iteration
-     *     has finished.
+     * @param {Object} options A Backbone-style options object. Valid options
+     * are:<ul>
+     *   <li>success: Function to call when the iteration completes successfully.
+     *   <li>error: Function to call when the iteration fails.
+     *   <li>useMasterKey: In Cloud Code and Node only, causes the Master Key to
+     *     be used for this request.
+     *   <li>sessionToken: A valid session token, used for making a request on
+     *       behalf of a specific user.
+     * </ul>
      * @return {Parse.Promise} A promise that will be fulfilled once the
      *     iteration has completed.
      */
@@ -6683,6 +7986,19 @@ var ParseQuery = (function () {
     }
 
     /**
+     * Subscribe this query to get liveQuery updates
+     * @method subscribe
+     * @return {LiveQuerySubscription} Returns the liveQuerySubscription, it's an event emitter
+     * which can be used to get liveQuery updates.
+     */
+  }, {
+    key: 'subscribe',
+    value: function subscribe() {
+      var controller = _CoreManager2['default'].getLiveQueryController();
+      return controller.subscribe(this);
+    }
+
+    /**
      * Constructs a Parse.Query that is the OR of the passed in queries.  For
      * example:
      * <pre>var compoundQuery = Parse.Query.or(query1, query2, query3);</pre>
@@ -6732,7 +8048,7 @@ _CoreManager2['default'].setQueryController({
   }
 });
 module.exports = exports['default'];
-},{"./CoreManager":3,"./ParseError":10,"./ParseGeoPoint":12,"./ParseObject":14,"./ParsePromise":16,"./encode":30,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],18:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseError":13,"./ParseGeoPoint":15,"./ParseObject":18,"./ParsePromise":20,"./encode":36,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],22:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -6831,9 +8147,13 @@ var ParseRelation = (function () {
       }
 
       var change = new _ParseOp.RelationOp(objects, []);
-      this.parent.set(this.key, change);
+      var parent = this.parent;
+      if (!parent) {
+        throw new Error('Cannot add to a Relation without a parent');
+      }
+      parent.set(this.key, change);
       this.targetClassName = change._targetClassName;
-      return this.parent;
+      return parent;
     }
 
     /**
@@ -6849,6 +8169,9 @@ var ParseRelation = (function () {
       }
 
       var change = new _ParseOp.RelationOp([], objects);
+      if (!this.parent) {
+        throw new Error('Cannot remove from a Relation without a parent');
+      }
       this.parent.set(this.key, change);
       this.targetClassName = change._targetClassName;
     }
@@ -6877,16 +8200,20 @@ var ParseRelation = (function () {
     key: 'query',
     value: function query() {
       var query;
+      var parent = this.parent;
+      if (!parent) {
+        throw new Error('Cannot construct a query for a Relation without a parent');
+      }
       if (!this.targetClassName) {
-        query = new _ParseQuery2['default'](this.parent.className);
+        query = new _ParseQuery2['default'](parent.className);
         query._extraOptions.redirectClassNameForKey = this.key;
       } else {
         query = new _ParseQuery2['default'](this.targetClassName);
       }
       query._addCondition('$relatedTo', 'object', {
         __type: 'Pointer',
-        className: this.parent.className,
-        objectId: this.parent.id
+        className: parent.className,
+        objectId: parent.id
       });
       query._addCondition('$relatedTo', 'key', this.key);
 
@@ -6899,7 +8226,7 @@ var ParseRelation = (function () {
 
 exports['default'] = ParseRelation;
 module.exports = exports['default'];
-},{"./ParseObject":14,"./ParseOp":15,"./ParseQuery":17,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],19:[function(_dereq_,module,exports){
+},{"./ParseObject":18,"./ParseOp":19,"./ParseQuery":21,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],23:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -6978,7 +8305,11 @@ var ParseRole = (function (_ParseObject) {
   _createClass(ParseRole, [{
     key: 'getName',
     value: function getName() {
-      return this.get('name');
+      var name = this.get('name');
+      if (name == null || typeof name === 'string') {
+        return name;
+      }
+      return '';
     }
 
     /**
@@ -7073,7 +8404,7 @@ exports['default'] = ParseRole;
 
 _ParseObject3['default'].registerSubclass('_Role', ParseRole);
 module.exports = exports['default'];
-},{"./ParseACL":8,"./ParseError":10,"./ParseObject":14,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/get":45,"babel-runtime/helpers/inherits":46,"babel-runtime/helpers/interop-require-default":47}],20:[function(_dereq_,module,exports){
+},{"./ParseACL":11,"./ParseError":13,"./ParseObject":18,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],24:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -7152,7 +8483,11 @@ var ParseSession = (function (_ParseObject) {
   _createClass(ParseSession, [{
     key: 'getSessionToken',
     value: function getSessionToken() {
-      return this.get('sessionToken');
+      var token = this.get('sessionToken');
+      if (typeof token === 'string') {
+        return token;
+      }
+      return '';
     }
   }], [{
     key: 'readOnlyAttributes',
@@ -7229,7 +8564,7 @@ _CoreManager2['default'].setSessionController({
   }
 });
 module.exports = exports['default'];
-},{"./CoreManager":3,"./ParseObject":14,"./ParsePromise":16,"./ParseUser":21,"./isRevocableSession":33,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/get":45,"babel-runtime/helpers/inherits":46,"babel-runtime/helpers/interop-require-default":47}],21:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseObject":18,"./ParsePromise":20,"./ParseUser":25,"./isRevocableSession":39,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],25:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -7255,8 +8590,6 @@ var _Object$defineProperty = _dereq_('babel-runtime/core-js/object/define-proper
 
 var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-default')['default'];
 
-var _interopRequireWildcard = _dereq_('babel-runtime/helpers/interop-require-wildcard')['default'];
-
 Object.defineProperty(exports, '__esModule', {
   value: true
 });
@@ -7268,10 +8601,6 @@ var _CoreManager2 = _interopRequireDefault(_CoreManager);
 var _isRevocableSession = _dereq_('./isRevocableSession');
 
 var _isRevocableSession2 = _interopRequireDefault(_isRevocableSession);
-
-var _ObjectState = _dereq_('./ObjectState');
-
-var ObjectState = _interopRequireWildcard(_ObjectState);
 
 var _ParseError = _dereq_('./ParseError');
 
@@ -7366,6 +8695,9 @@ var ParseUser = (function (_ParseObject) {
       }
       if (options && options.hasOwnProperty('authData')) {
         var authData = this.get('authData') || {};
+        if (typeof authData !== 'object') {
+          throw new Error('Invalid type: authData field should be an object');
+        }
         authData[authType] = options.authData;
 
         var controller = _CoreManager2['default'].getUserController();
@@ -7418,7 +8750,7 @@ var ParseUser = (function (_ParseObject) {
         authType = provider.getAuthType();
       }
       var authData = this.get('authData');
-      if (!provider || typeof authData !== 'object') {
+      if (!provider || !authData || typeof authData !== 'object') {
         return;
       }
       var success = provider.restoreAuthentication(authData[authType]);
@@ -7503,6 +8835,9 @@ var ParseUser = (function (_ParseObject) {
         authType = provider.getAuthType();
       }
       var authData = this.get('authData') || {};
+      if (typeof authData !== 'object') {
+        return false;
+      }
       return !!authData[authType];
     }
 
@@ -7543,6 +8878,18 @@ var ParseUser = (function (_ParseObject) {
     }
 
     /**
+     * Class instance method used to maintain specific keys when a fetch occurs.
+     * Used to ensure that the session token is not lost.
+     */
+  }, {
+    key: '_preserveFieldsOnFetch',
+    value: function _preserveFieldsOnFetch() {
+      return {
+        sessionToken: this.get('sessionToken')
+      };
+    }
+
+    /**
      * Returns true if <code>current</code> would return this user.
      * @method isCurrent
      * @return {Boolean}
@@ -7562,7 +8909,11 @@ var ParseUser = (function (_ParseObject) {
   }, {
     key: 'getUsername',
     value: function getUsername() {
-      return this.get('username');
+      var username = this.get('username');
+      if (username == null || typeof username === 'string') {
+        return username;
+      }
+      return '';
     }
 
     /**
@@ -7575,6 +8926,13 @@ var ParseUser = (function (_ParseObject) {
   }, {
     key: 'setUsername',
     value: function setUsername(username) {
+      // Strip anonymity, even we do not support anonymous user in js SDK, we may
+      // encounter anonymous user created by android/iOS in cloud code.
+      var authData = this.get('authData');
+      if (authData && typeof authData === 'object' && authData.hasOwnProperty('anonymous')) {
+        // We need to set anonymous to null instead of deleting it in order to remove it from Parse.
+        authData.anonymous = null;
+      }
       this.set('username', username);
     }
 
@@ -7599,7 +8957,11 @@ var ParseUser = (function (_ParseObject) {
   }, {
     key: 'getEmail',
     value: function getEmail() {
-      return this.get('email');
+      var email = this.get('email');
+      if (email == null || typeof email === 'string') {
+        return email;
+      }
+      return '';
     }
 
     /**
@@ -7625,7 +8987,11 @@ var ParseUser = (function (_ParseObject) {
   }, {
     key: 'getSessionToken',
     value: function getSessionToken() {
-      return this.get('sessionToken');
+      var token = this.get('sessionToken');
+      if (token == null || typeof token === 'string') {
+        return token;
+      }
+      return '';
     }
 
     /**
@@ -7665,6 +9031,9 @@ var ParseUser = (function (_ParseObject) {
       if (options.hasOwnProperty('useMasterKey')) {
         signupOptions.useMasterKey = options.useMasterKey;
       }
+      if (options.hasOwnProperty('installationId')) {
+        signupOptions.installationId = options.installationId;
+      }
 
       var controller = _CoreManager2['default'].getUserController();
       return controller.signUp(this, attrs, signupOptions)._thenRunCallbacks(options, this);
@@ -7693,9 +9062,75 @@ var ParseUser = (function (_ParseObject) {
       if (options.hasOwnProperty('useMasterKey')) {
         loginOptions.useMasterKey = options.useMasterKey;
       }
+      if (options.hasOwnProperty('installationId')) {
+        loginOptions.installationId = options.installationId;
+      }
 
       var controller = _CoreManager2['default'].getUserController();
       return controller.logIn(this, loginOptions)._thenRunCallbacks(options, this);
+    }
+
+    /**
+     * Wrap the default save behavior with functionality to save to local
+     * storage if this is current user.
+     */
+  }, {
+    key: 'save',
+    value: function save() {
+      var _this3 = this;
+
+      for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key];
+      }
+
+      return _get(Object.getPrototypeOf(ParseUser.prototype), 'save', this).apply(this, args).then(function () {
+        if (_this3.isCurrent()) {
+          return _CoreManager2['default'].getUserController().updateUserOnDisk(_this3);
+        }
+        return _this3;
+      });
+    }
+
+    /**
+     * Wrap the default destroy behavior with functionality that logs out
+     * the current user when it is destroyed
+     */
+  }, {
+    key: 'destroy',
+    value: function destroy() {
+      var _this4 = this;
+
+      for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+        args[_key2] = arguments[_key2];
+      }
+
+      return _get(Object.getPrototypeOf(ParseUser.prototype), 'destroy', this).apply(this, args).then(function () {
+        if (_this4.isCurrent()) {
+          return _CoreManager2['default'].getUserController().removeUserFromDisk();
+        }
+        return _this4;
+      });
+    }
+
+    /**
+     * Wrap the default fetch behavior with functionality to save to local
+     * storage if this is current user.
+     */
+  }, {
+    key: 'fetch',
+    value: function fetch() {
+      var _this5 = this;
+
+      for (var _len3 = arguments.length, args = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
+        args[_key3] = arguments[_key3];
+      }
+
+      return _get(Object.getPrototypeOf(ParseUser.prototype), 'fetch', this).apply(this, args).then(function () {
+        if (_this5.isCurrent()) {
+          return _CoreManager2['default'].getUserController().updateUserOnDisk(_this5);
+        }
+        return _this5;
+      });
     }
   }], [{
     key: 'readOnlyAttributes',
@@ -7822,6 +9257,11 @@ var ParseUser = (function (_ParseObject) {
   }, {
     key: 'logIn',
     value: function logIn(username, password, options) {
+      if (typeof username !== 'string') {
+        return _ParsePromise2['default'].error(new _ParseError2['default'](_ParseError2['default'].OTHER_CAUSE, 'Username must be a string.'));
+      } else if (typeof password !== 'string') {
+        return _ParsePromise2['default'].error(new _ParseError2['default'](_ParseError2['default'].OTHER_CAUSE, 'Password must be a string.'));
+      }
       var user = new ParseUser();
       user._finishFetch({ username: username, password: password });
       return user.logIn(options);
@@ -7986,10 +9426,11 @@ var ParseUser = (function (_ParseObject) {
     value: function _registerAuthenticationProvider(provider) {
       authProviders[provider.getAuthType()] = provider;
       // Synchronize the current user with the auth provider.
-      var current = ParseUser.current();
-      if (current) {
-        current._synchronizeAuthData(provider.getAuthType());
-      }
+      ParseUser.currentAsync().then(function (current) {
+        if (current) {
+          current._synchronizeAuthData(provider.getAuthType());
+        }
+      });
     }
   }, {
     key: '_logInWith',
@@ -8018,16 +9459,27 @@ exports['default'] = ParseUser;
 _ParseObject3['default'].registerSubclass('_User', ParseUser);
 
 var DefaultController = {
-  setCurrentUser: function setCurrentUser(user) {
-    currentUserCache = user;
-    user._cleanupAuthData();
-    user._synchronizeAllAuthData();
+  updateUserOnDisk: function updateUserOnDisk(user) {
     var path = _Storage2['default'].generatePath(CURRENT_USER_KEY);
     var json = user.toJSON();
     json.className = '_User';
     return _Storage2['default'].setItemAsync(path, JSON.stringify(json)).then(function () {
       return user;
     });
+  },
+
+  removeUserFromDisk: function removeUserFromDisk() {
+    var path = _Storage2['default'].generatePath(CURRENT_USER_KEY);
+    currentUserCacheMatchesDisk = true;
+    currentUserCache = null;
+    return _Storage2['default'].removeItemAsync(path);
+  },
+
+  setCurrentUser: function setCurrentUser(user) {
+    currentUserCache = user;
+    user._cleanupAuthData();
+    user._synchronizeAllAuthData();
+    return DefaultController.updateUserOnDisk(user);
   },
 
   currentUser: function currentUser() {
@@ -8061,7 +9513,7 @@ var DefaultController = {
       userData.sessionToken = userData._sessionToken;
       delete userData._sessionToken;
     }
-    var current = ParseUser.fromJSON(userData);
+    var current = _ParseObject3['default'].fromJSON(userData);
     currentUserCache = current;
     current._synchronizeAllAuthData();
     return current;
@@ -8095,7 +9547,7 @@ var DefaultController = {
         userData.sessionToken = userData._sessionToken;
         delete userData._sessionToken;
       }
-      var current = ParseUser.fromJSON(userData);
+      var current = _ParseObject3['default'].fromJSON(userData);
       currentUserCache = current;
       current._synchronizeAllAuthData();
       return _ParsePromise2['default'].as(current);
@@ -8126,6 +9578,7 @@ var DefaultController = {
 
   logIn: function logIn(user, options) {
     var RESTController = _CoreManager2['default'].getRESTController();
+    var stateController = _CoreManager2['default'].getObjectStateController();
     var auth = {
       username: user.get('username'),
       password: user.get('password')
@@ -8133,8 +9586,8 @@ var DefaultController = {
     return RESTController.request('GET', 'login', auth, options).then(function (response, status) {
       user._migrateId(response.objectId);
       user._setExisted(true);
-      ObjectState.setPendingOp(user.className, user._getId(), 'username', undefined);
-      ObjectState.setPendingOp(user.className, user._getId(), 'password', undefined);
+      stateController.setPendingOp(user._getStateIdentifier(), 'username', undefined);
+      stateController.setPendingOp(user._getStateIdentifier(), 'password', undefined);
       response.password = undefined;
       user._finishFetch(response);
       if (!canUseCurrentUser) {
@@ -8163,7 +9616,7 @@ var DefaultController = {
       if (currentUser !== null) {
         var currentSession = currentUser.getSessionToken();
         if (currentSession && (0, _isRevocableSession2['default'])(currentSession)) {
-          promise.then(function () {
+          promise = promise.then(function () {
             return RESTController.request('POST', 'logout', {}, { sessionToken: currentSession });
           });
         }
@@ -8214,7 +9667,7 @@ var DefaultController = {
 
 _CoreManager2['default'].setUserController(DefaultController);
 module.exports = exports['default'];
-},{"./CoreManager":3,"./ObjectState":6,"./ParseError":10,"./ParseObject":14,"./ParsePromise":16,"./ParseSession":20,"./Storage":24,"./isRevocableSession":33,"babel-runtime/core-js/object/define-property":38,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/get":45,"babel-runtime/helpers/inherits":46,"babel-runtime/helpers/interop-require-default":47,"babel-runtime/helpers/interop-require-wildcard":48}],22:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseError":13,"./ParseObject":18,"./ParsePromise":20,"./ParseSession":24,"./Storage":29,"./isRevocableSession":39,"babel-runtime/core-js/object/define-property":46,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/get":54,"babel-runtime/helpers/inherits":55,"babel-runtime/helpers/interop-require-default":56}],26:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8305,7 +9758,7 @@ _CoreManager2['default'].setPushController({
     return request._thenRunCallbacks(options);
   }
 });
-},{"./CoreManager":3,"./ParseQuery":17,"babel-runtime/helpers/interop-require-default":47}],23:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseQuery":21,"babel-runtime/helpers/interop-require-default":56}],27:[function(_dereq_,module,exports){
 (function (process){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
@@ -8362,7 +9815,9 @@ function ajaxIE9(method, url, data) {
     } catch (e) {
       promise.reject(e);
     }
-    promise.resolve(response);
+    if (response) {
+      promise.resolve(response);
+    }
   };
   xdr.onerror = xdr.ontimeout = function () {
     // Let's fake a real error message.
@@ -8407,15 +9862,19 @@ var RESTController = {
           try {
             response = JSON.parse(xhr.responseText);
           } catch (e) {
-            promise.reject(e);
+            promise.reject(e.toString());
           }
-          promise.resolve(response, xhr.status, xhr);
-        } else if (xhr.status >= 500) {
-          // retry on 5XX
+          if (response) {
+            promise.resolve(response, xhr.status, xhr);
+          }
+        } else if (xhr.status >= 500 || xhr.status === 0) {
+          // retry on 5XX or node-xmlhttprequest error
           if (++attempts < _CoreManager2['default'].get('REQUEST_ATTEMPT_LIMIT')) {
             // Exponentially-growing random delay
             var delay = Math.round(Math.random() * 125 * Math.pow(2, attempts));
             setTimeout(dispatch, delay);
+          } else if (xhr.status === 0) {
+            promise.reject('Unable to connect to the Parse API');
           } else {
             // After the retry limit is reached, fail
             promise.reject(xhr);
@@ -8426,7 +9885,9 @@ var RESTController = {
       };
 
       headers = headers || {};
-      headers['Content-Type'] = 'text/plain'; // Avoid pre-flight
+      if (typeof headers['Content-Type'] !== 'string') {
+        headers['Content-Type'] = 'text/plain'; // Avoid pre-flight
+      }
       if (_CoreManager2['default'].get('IS_NODE')) {
         headers['User-Agent'] = 'Parse/' + _CoreManager2['default'].get('VERSION') + ' (NodeJS ' + process.versions.node + ')';
       }
@@ -8445,7 +9906,10 @@ var RESTController = {
   request: function request(method, path, data, options) {
     options = options || {};
     var url = _CoreManager2['default'].get('SERVER_URL');
-    url += '/1/' + path;
+    if (url[url.length - 1] !== '/') {
+      url += '/';
+    }
+    url += path;
 
     var payload = {};
     if (data && typeof data === 'object') {
@@ -8460,8 +9924,11 @@ var RESTController = {
     }
 
     payload._ApplicationId = _CoreManager2['default'].get('APPLICATION_ID');
-    payload._JavaScriptKey = _CoreManager2['default'].get('JAVASCRIPT_KEY');
-    payload._ClientVersion = 'js' + _CoreManager2['default'].get('VERSION');
+    var jsKey = _CoreManager2['default'].get('JAVASCRIPT_KEY');
+    if (jsKey) {
+      payload._JavaScriptKey = jsKey;
+    }
+    payload._ClientVersion = _CoreManager2['default'].get('VERSION');
 
     var useMasterKey = options.useMasterKey;
     if (typeof useMasterKey === 'undefined') {
@@ -8480,9 +9947,16 @@ var RESTController = {
       payload._RevocableSession = '1';
     }
 
-    var installationController = _CoreManager2['default'].getInstallationController();
+    var installationId = options.installationId;
+    var installationIdPromise;
+    if (installationId && typeof installationId === 'string') {
+      installationIdPromise = _ParsePromise2['default'].as(installationId);
+    } else {
+      var installationController = _CoreManager2['default'].getInstallationController();
+      installationIdPromise = installationController.currentInstallationId();
+    }
 
-    return installationController.currentInstallationId().then(function (iid) {
+    return installationIdPromise.then(function (iid) {
       payload._InstallationId = iid;
       var userController = _CoreManager2['default'].getUserController();
       if (options && typeof options.sessionToken === 'string') {
@@ -8531,7 +10005,160 @@ var RESTController = {
 
 module.exports = RESTController;
 }).call(this,_dereq_('_process'))
-},{"./CoreManager":3,"./ParseError":10,"./ParsePromise":16,"./Storage":24,"_process":49,"babel-runtime/helpers/interop-require-default":47}],24:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParseError":13,"./ParsePromise":20,"./Storage":29,"_process":58,"babel-runtime/helpers/interop-require-default":56}],28:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *
+ */
+
+'use strict';
+
+var _interopRequireWildcard = _dereq_('babel-runtime/helpers/interop-require-wildcard')['default'];
+
+Object.defineProperty(exports, '__esModule', {
+  value: true
+});
+exports.getState = getState;
+exports.initializeState = initializeState;
+exports.removeState = removeState;
+exports.getServerData = getServerData;
+exports.setServerData = setServerData;
+exports.getPendingOps = getPendingOps;
+exports.setPendingOp = setPendingOp;
+exports.pushPendingState = pushPendingState;
+exports.popPendingState = popPendingState;
+exports.mergeFirstPendingState = mergeFirstPendingState;
+exports.getObjectCache = getObjectCache;
+exports.estimateAttribute = estimateAttribute;
+exports.estimateAttributes = estimateAttributes;
+exports.commitServerChanges = commitServerChanges;
+exports.enqueueTask = enqueueTask;
+exports.clearAllState = clearAllState;
+exports.duplicateState = duplicateState;
+
+var _ObjectStateMutations = _dereq_('./ObjectStateMutations');
+
+var ObjectStateMutations = _interopRequireWildcard(_ObjectStateMutations);
+
+var objectState = {};
+
+function getState(obj) {
+  var classData = objectState[obj.className];
+  if (classData) {
+    return classData[obj.id] || null;
+  }
+  return null;
+}
+
+function initializeState(obj, initial) {
+  var state = getState(obj);
+  if (state) {
+    return state;
+  }
+  if (!objectState[obj.className]) {
+    objectState[obj.className] = {};
+  }
+  if (!initial) {
+    initial = ObjectStateMutations.defaultState();
+  }
+  state = objectState[obj.className][obj.id] = initial;
+  return state;
+}
+
+function removeState(obj) {
+  var state = getState(obj);
+  if (state === null) {
+    return null;
+  }
+  delete objectState[obj.className][obj.id];
+  return state;
+}
+
+function getServerData(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.serverData;
+  }
+  return {};
+}
+
+function setServerData(obj, attributes) {
+  var serverData = initializeState(obj).serverData;
+  ObjectStateMutations.setServerData(serverData, attributes);
+}
+
+function getPendingOps(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.pendingOps;
+  }
+  return [{}];
+}
+
+function setPendingOp(obj, attr, op) {
+  var pendingOps = initializeState(obj).pendingOps;
+  ObjectStateMutations.setPendingOp(pendingOps, attr, op);
+}
+
+function pushPendingState(obj) {
+  var pendingOps = initializeState(obj).pendingOps;
+  ObjectStateMutations.pushPendingState(pendingOps);
+}
+
+function popPendingState(obj) {
+  var pendingOps = initializeState(obj).pendingOps;
+  return ObjectStateMutations.popPendingState(pendingOps);
+}
+
+function mergeFirstPendingState(obj) {
+  var pendingOps = getPendingOps(obj);
+  ObjectStateMutations.mergeFirstPendingState(pendingOps);
+}
+
+function getObjectCache(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.objectCache;
+  }
+  return {};
+}
+
+function estimateAttribute(obj, attr) {
+  var serverData = getServerData(obj);
+  var pendingOps = getPendingOps(obj);
+  return ObjectStateMutations.estimateAttribute(serverData, pendingOps, obj.className, obj.id, attr);
+}
+
+function estimateAttributes(obj) {
+  var serverData = getServerData(obj);
+  var pendingOps = getPendingOps(obj);
+  return ObjectStateMutations.estimateAttributes(serverData, pendingOps, obj.className, obj.id);
+}
+
+function commitServerChanges(obj, changes) {
+  var state = initializeState(obj);
+  ObjectStateMutations.commitServerChanges(state.serverData, state.objectCache, changes);
+}
+
+function enqueueTask(obj, task) {
+  var state = initializeState(obj);
+  return state.tasks.enqueue(task);
+}
+
+function clearAllState() {
+  objectState = {};
+}
+
+function duplicateState(source, dest) {
+  dest.id = source.id;
+}
+},{"./ObjectStateMutations":9,"babel-runtime/helpers/interop-require-wildcard":57}],29:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8631,7 +10258,7 @@ module.exports = {
 };
 
 _CoreManager2['default'].setStorageController(_dereq_('./StorageController.browser'));
-},{"./CoreManager":3,"./ParsePromise":16,"./StorageController.browser":25,"babel-runtime/helpers/interop-require-default":47}],25:[function(_dereq_,module,exports){
+},{"./CoreManager":3,"./ParsePromise":20,"./StorageController.browser":30,"babel-runtime/helpers/interop-require-default":56}],30:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8659,7 +10286,11 @@ module.exports = {
   },
 
   setItem: function setItem(path, value) {
-    localStorage.setItem(path, value);
+    try {
+      localStorage.setItem(path, value);
+    } catch (e) {
+      // Quota exceeded, possibly due to Safari Private Browsing mode
+    }
   },
 
   removeItem: function removeItem(path) {
@@ -8670,7 +10301,7 @@ module.exports = {
     localStorage.clear();
   }
 };
-},{"./ParsePromise":16,"babel-runtime/helpers/interop-require-default":47}],26:[function(_dereq_,module,exports){
+},{"./ParsePromise":20,"babel-runtime/helpers/interop-require-default":56}],31:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8743,7 +10374,182 @@ module.exports = (function () {
 
   return TaskQueue;
 })();
-},{"./ParsePromise":16,"babel-runtime/helpers/class-call-check":43,"babel-runtime/helpers/create-class":44,"babel-runtime/helpers/interop-require-default":47}],27:[function(_dereq_,module,exports){
+},{"./ParsePromise":20,"babel-runtime/helpers/class-call-check":52,"babel-runtime/helpers/create-class":53,"babel-runtime/helpers/interop-require-default":56}],32:[function(_dereq_,module,exports){
+/**
+ * Copyright (c) 2015-present, Parse, LLC.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *
+ */
+
+'use strict';
+
+var _WeakMap = _dereq_('babel-runtime/core-js/weak-map')['default'];
+
+var _interopRequireWildcard = _dereq_('babel-runtime/helpers/interop-require-wildcard')['default'];
+
+var _interopRequireDefault = _dereq_('babel-runtime/helpers/interop-require-default')['default'];
+
+Object.defineProperty(exports, '__esModule', {
+  value: true
+});
+exports.getState = getState;
+exports.initializeState = initializeState;
+exports.removeState = removeState;
+exports.getServerData = getServerData;
+exports.setServerData = setServerData;
+exports.getPendingOps = getPendingOps;
+exports.setPendingOp = setPendingOp;
+exports.pushPendingState = pushPendingState;
+exports.popPendingState = popPendingState;
+exports.mergeFirstPendingState = mergeFirstPendingState;
+exports.getObjectCache = getObjectCache;
+exports.estimateAttribute = estimateAttribute;
+exports.estimateAttributes = estimateAttributes;
+exports.commitServerChanges = commitServerChanges;
+exports.enqueueTask = enqueueTask;
+exports.duplicateState = duplicateState;
+exports.clearAllState = clearAllState;
+
+var _ObjectStateMutations = _dereq_('./ObjectStateMutations');
+
+var ObjectStateMutations = _interopRequireWildcard(_ObjectStateMutations);
+
+var _TaskQueue = _dereq_('./TaskQueue');
+
+var _TaskQueue2 = _interopRequireDefault(_TaskQueue);
+
+var objectState = new _WeakMap();
+
+function getState(obj) {
+  var classData = objectState.get(obj);
+  return classData || null;
+}
+
+function initializeState(obj, initial) {
+  var state = getState(obj);
+  if (state) {
+    return state;
+  }
+  if (!initial) {
+    initial = {
+      serverData: {},
+      pendingOps: [{}],
+      objectCache: {},
+      tasks: new _TaskQueue2['default'](),
+      existed: false
+    };
+  }
+  state = initial;
+  objectState.set(obj, state);
+  return state;
+}
+
+function removeState(obj) {
+  var state = getState(obj);
+  if (state === null) {
+    return null;
+  }
+  objectState['delete'](obj);
+  return state;
+}
+
+function getServerData(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.serverData;
+  }
+  return {};
+}
+
+function setServerData(obj, attributes) {
+  var serverData = initializeState(obj).serverData;
+  ObjectStateMutations.setServerData(serverData, attributes);
+}
+
+function getPendingOps(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.pendingOps;
+  }
+  return [{}];
+}
+
+function setPendingOp(obj, attr, op) {
+  var pendingOps = initializeState(obj).pendingOps;
+  ObjectStateMutations.setPendingOp(pendingOps, attr, op);
+}
+
+function pushPendingState(obj) {
+  var pendingOps = initializeState(obj).pendingOps;
+  ObjectStateMutations.pushPendingState(pendingOps);
+}
+
+function popPendingState(obj) {
+  var pendingOps = initializeState(obj).pendingOps;
+  return ObjectStateMutations.popPendingState(pendingOps);
+}
+
+function mergeFirstPendingState(obj) {
+  var pendingOps = getPendingOps(obj);
+  ObjectStateMutations.mergeFirstPendingState(pendingOps);
+}
+
+function getObjectCache(obj) {
+  var state = getState(obj);
+  if (state) {
+    return state.objectCache;
+  }
+  return {};
+}
+
+function estimateAttribute(obj, attr) {
+  var serverData = getServerData(obj);
+  var pendingOps = getPendingOps(obj);
+  return ObjectStateMutations.estimateAttribute(serverData, pendingOps, obj.className, obj.id, attr);
+}
+
+function estimateAttributes(obj) {
+  var serverData = getServerData(obj);
+  var pendingOps = getPendingOps(obj);
+  return ObjectStateMutations.estimateAttributes(serverData, pendingOps, obj.className, obj.id);
+}
+
+function commitServerChanges(obj, changes) {
+  var state = initializeState(obj);
+  ObjectStateMutations.commitServerChanges(state.serverData, state.objectCache, changes);
+}
+
+function enqueueTask(obj, task) {
+  var state = initializeState(obj);
+  return state.tasks.enqueue(task);
+}
+
+function duplicateState(source, dest) {
+  var oldState = initializeState(source);
+  var newState = initializeState(dest);
+  for (var key in oldState.serverData) {
+    newState.serverData[key] = oldState.serverData[key];
+  }
+  for (var index = 0; index < oldState.pendingOps.length; index++) {
+    for (var key in oldState.pendingOps[index]) {
+      newState.pendingOps[index][key] = oldState.pendingOps[index][key];
+    }
+  }
+  for (var key in oldState.objectCache) {
+    newState.objectCache[key] = oldState.objectCache[key];
+  }
+  newState.existed = oldState.existed;
+}
+
+function clearAllState() {
+  objectState = new _WeakMap();
+}
+},{"./ObjectStateMutations":9,"./TaskQueue":31,"babel-runtime/core-js/weak-map":51,"babel-runtime/helpers/interop-require-default":56,"babel-runtime/helpers/interop-require-wildcard":57}],33:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8781,7 +10587,7 @@ function arrayContainsObject(array, object) {
 }
 
 module.exports = exports['default'];
-},{"./ParseObject":14,"babel-runtime/helpers/interop-require-default":47}],28:[function(_dereq_,module,exports){
+},{"./ParseObject":18,"babel-runtime/helpers/interop-require-default":56}],34:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8860,7 +10666,7 @@ function canBeSerializedHelper(value) {
   return true;
 }
 module.exports = exports['default'];
-},{"./ParseFile":11,"./ParseObject":14,"./ParseRelation":18,"babel-runtime/helpers/interop-require-default":47}],29:[function(_dereq_,module,exports){
+},{"./ParseFile":14,"./ParseObject":18,"./ParseRelation":22,"babel-runtime/helpers/interop-require-default":56}],35:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -8949,7 +10755,7 @@ function decode(value) {
 }
 
 module.exports = exports['default'];
-},{"./ParseACL":8,"./ParseFile":11,"./ParseGeoPoint":12,"./ParseObject":14,"./ParseOp":15,"./ParseRelation":18,"babel-runtime/helpers/interop-require-default":47}],30:[function(_dereq_,module,exports){
+},{"./ParseACL":11,"./ParseFile":14,"./ParseGeoPoint":15,"./ParseObject":18,"./ParseOp":19,"./ParseRelation":22,"babel-runtime/helpers/interop-require-default":56}],36:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9005,19 +10811,7 @@ function encode(value, disallowObjects, forcePointers, seen) {
       return value.toPointer();
     }
     seen = seen.concat(seenEntry);
-    var json = encode(value.attributes, disallowObjects, forcePointers, seen);
-    if (json.createdAt) {
-      json.createdAt = json.createdAt.iso;
-    }
-    if (json.updatedAt) {
-      json.updatedAt = json.updatedAt.iso;
-    }
-    json.className = value.className;
-    json.__type = 'Object';
-    if (value.id) {
-      json.objectId = value.id;
-    }
-    return json;
+    return value._toFullJSON(seen);
   }
   if (value instanceof _ParseOp.Op || value instanceof _ParseACL2['default'] || value instanceof _ParseGeoPoint2['default'] || value instanceof _ParseRelation2['default']) {
     return value.toJSON();
@@ -9060,7 +10854,7 @@ exports['default'] = function (value, disallowObjects, forcePointers, seen) {
 };
 
 module.exports = exports['default'];
-},{"./ParseACL":8,"./ParseFile":11,"./ParseGeoPoint":12,"./ParseObject":14,"./ParseOp":15,"./ParseRelation":18,"babel-runtime/core-js/object/keys":41,"babel-runtime/helpers/interop-require-default":47}],31:[function(_dereq_,module,exports){
+},{"./ParseACL":11,"./ParseFile":14,"./ParseGeoPoint":15,"./ParseObject":18,"./ParseOp":19,"./ParseRelation":22,"babel-runtime/core-js/object/keys":49,"babel-runtime/helpers/interop-require-default":56}],37:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9138,7 +10932,7 @@ function equals(a, b) {
 }
 
 module.exports = exports['default'];
-},{"./ParseACL":8,"./ParseFile":11,"./ParseGeoPoint":12,"./ParseObject":14,"babel-runtime/core-js/object/keys":41,"babel-runtime/helpers/interop-require-default":47}],32:[function(_dereq_,module,exports){
+},{"./ParseACL":11,"./ParseFile":14,"./ParseGeoPoint":15,"./ParseObject":18,"babel-runtime/core-js/object/keys":49,"babel-runtime/helpers/interop-require-default":56}],38:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9171,7 +10965,7 @@ function escape(str) {
 }
 
 module.exports = exports['default'];
-},{}],33:[function(_dereq_,module,exports){
+},{}],39:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9195,7 +10989,7 @@ function isRevocableSession(token) {
 }
 
 module.exports = exports['default'];
-},{}],34:[function(_dereq_,module,exports){
+},{}],40:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9233,7 +11027,7 @@ function parseDate(iso8601) {
 }
 
 module.exports = exports['default'];
-},{}],35:[function(_dereq_,module,exports){
+},{}],41:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9279,7 +11073,7 @@ function unique(arr) {
 }
 
 module.exports = exports['default'];
-},{"./ParseObject":14,"./arrayContainsObject":27,"babel-runtime/helpers/interop-require-default":47}],36:[function(_dereq_,module,exports){
+},{"./ParseObject":18,"./arrayContainsObject":33,"babel-runtime/helpers/interop-require-default":56}],42:[function(_dereq_,module,exports){
 /**
  * Copyright (c) 2015-present, Parse, LLC.
  * All rights reserved.
@@ -9367,7 +11161,9 @@ function traverse(obj, encountered, shouldThrow, allowDeepUnsaved) {
   }
   if (Array.isArray(obj)) {
     obj.forEach(function (el) {
-      traverse(el, encountered, shouldThrow, allowDeepUnsaved);
+      if (typeof el === 'object') {
+        traverse(el, encountered, shouldThrow, allowDeepUnsaved);
+      }
     });
   }
   for (var k in obj) {
@@ -9377,19 +11173,25 @@ function traverse(obj, encountered, shouldThrow, allowDeepUnsaved) {
   }
 }
 module.exports = exports['default'];
-},{"./ParseFile":11,"./ParseObject":14,"./ParseRelation":18,"babel-runtime/helpers/interop-require-default":47}],37:[function(_dereq_,module,exports){
+},{"./ParseFile":14,"./ParseObject":18,"./ParseRelation":22,"babel-runtime/helpers/interop-require-default":56}],43:[function(_dereq_,module,exports){
+module.exports = { "default": _dereq_("core-js/library/fn/get-iterator"), __esModule: true };
+},{"core-js/library/fn/get-iterator":59}],44:[function(_dereq_,module,exports){
+module.exports = { "default": _dereq_("core-js/library/fn/map"), __esModule: true };
+},{"core-js/library/fn/map":60}],45:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/create"), __esModule: true };
-},{"core-js/library/fn/object/create":50}],38:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/create":61}],46:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/define-property"), __esModule: true };
-},{"core-js/library/fn/object/define-property":51}],39:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/define-property":62}],47:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/freeze"), __esModule: true };
-},{"core-js/library/fn/object/freeze":52}],40:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/freeze":63}],48:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/get-own-property-descriptor"), __esModule: true };
-},{"core-js/library/fn/object/get-own-property-descriptor":53}],41:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/get-own-property-descriptor":64}],49:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/keys"), __esModule: true };
-},{"core-js/library/fn/object/keys":54}],42:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/keys":65}],50:[function(_dereq_,module,exports){
 module.exports = { "default": _dereq_("core-js/library/fn/object/set-prototype-of"), __esModule: true };
-},{"core-js/library/fn/object/set-prototype-of":55}],43:[function(_dereq_,module,exports){
+},{"core-js/library/fn/object/set-prototype-of":66}],51:[function(_dereq_,module,exports){
+module.exports = { "default": _dereq_("core-js/library/fn/weak-map"), __esModule: true };
+},{"core-js/library/fn/weak-map":67}],52:[function(_dereq_,module,exports){
 "use strict";
 
 exports["default"] = function (instance, Constructor) {
@@ -9399,7 +11201,7 @@ exports["default"] = function (instance, Constructor) {
 };
 
 exports.__esModule = true;
-},{}],44:[function(_dereq_,module,exports){
+},{}],53:[function(_dereq_,module,exports){
 "use strict";
 
 var _Object$defineProperty = _dereq_("babel-runtime/core-js/object/define-property")["default"];
@@ -9424,7 +11226,7 @@ exports["default"] = (function () {
 })();
 
 exports.__esModule = true;
-},{"babel-runtime/core-js/object/define-property":38}],45:[function(_dereq_,module,exports){
+},{"babel-runtime/core-js/object/define-property":46}],54:[function(_dereq_,module,exports){
 "use strict";
 
 var _Object$getOwnPropertyDescriptor = _dereq_("babel-runtime/core-js/object/get-own-property-descriptor")["default"];
@@ -9436,7 +11238,6 @@ exports["default"] = function get(_x, _x2, _x3) {
     var object = _x,
         property = _x2,
         receiver = _x3;
-    desc = parent = getter = undefined;
     _again = false;
     if (object === null) object = Function.prototype;
 
@@ -9452,6 +11253,7 @@ exports["default"] = function get(_x, _x2, _x3) {
         _x2 = property;
         _x3 = receiver;
         _again = true;
+        desc = parent = undefined;
         continue _function;
       }
     } else if ("value" in desc) {
@@ -9469,7 +11271,7 @@ exports["default"] = function get(_x, _x2, _x3) {
 };
 
 exports.__esModule = true;
-},{"babel-runtime/core-js/object/get-own-property-descriptor":40}],46:[function(_dereq_,module,exports){
+},{"babel-runtime/core-js/object/get-own-property-descriptor":48}],55:[function(_dereq_,module,exports){
 "use strict";
 
 var _Object$create = _dereq_("babel-runtime/core-js/object/create")["default"];
@@ -9493,7 +11295,7 @@ exports["default"] = function (subClass, superClass) {
 };
 
 exports.__esModule = true;
-},{"babel-runtime/core-js/object/create":37,"babel-runtime/core-js/object/set-prototype-of":42}],47:[function(_dereq_,module,exports){
+},{"babel-runtime/core-js/object/create":45,"babel-runtime/core-js/object/set-prototype-of":50}],56:[function(_dereq_,module,exports){
 "use strict";
 
 exports["default"] = function (obj) {
@@ -9503,7 +11305,7 @@ exports["default"] = function (obj) {
 };
 
 exports.__esModule = true;
-},{}],48:[function(_dereq_,module,exports){
+},{}],57:[function(_dereq_,module,exports){
 "use strict";
 
 exports["default"] = function (obj) {
@@ -9524,54 +11326,465 @@ exports["default"] = function (obj) {
 };
 
 exports.__esModule = true;
-},{}],49:[function(_dereq_,module,exports){
+},{}],58:[function(_dereq_,module,exports){
 
-},{}],50:[function(_dereq_,module,exports){
+},{}],59:[function(_dereq_,module,exports){
+_dereq_('../modules/web.dom.iterable');
+_dereq_('../modules/es6.string.iterator');
+module.exports = _dereq_('../modules/core.get-iterator');
+},{"../modules/core.get-iterator":117,"../modules/es6.string.iterator":125,"../modules/web.dom.iterable":128}],60:[function(_dereq_,module,exports){
+_dereq_('../modules/es6.object.to-string');
+_dereq_('../modules/es6.string.iterator');
+_dereq_('../modules/web.dom.iterable');
+_dereq_('../modules/es6.map');
+_dereq_('../modules/es7.map.to-json');
+module.exports = _dereq_('../modules/$.core').Map;
+},{"../modules/$.core":79,"../modules/es6.map":119,"../modules/es6.object.to-string":124,"../modules/es6.string.iterator":125,"../modules/es7.map.to-json":127,"../modules/web.dom.iterable":128}],61:[function(_dereq_,module,exports){
 var $ = _dereq_('../../modules/$');
 module.exports = function create(P, D){
   return $.create(P, D);
 };
-},{"../../modules/$":67}],51:[function(_dereq_,module,exports){
+},{"../../modules/$":98}],62:[function(_dereq_,module,exports){
 var $ = _dereq_('../../modules/$');
 module.exports = function defineProperty(it, key, desc){
   return $.setDesc(it, key, desc);
 };
-},{"../../modules/$":67}],52:[function(_dereq_,module,exports){
+},{"../../modules/$":98}],63:[function(_dereq_,module,exports){
 _dereq_('../../modules/es6.object.freeze');
 module.exports = _dereq_('../../modules/$.core').Object.freeze;
-},{"../../modules/$.core":59,"../../modules/es6.object.freeze":72}],53:[function(_dereq_,module,exports){
+},{"../../modules/$.core":79,"../../modules/es6.object.freeze":120}],64:[function(_dereq_,module,exports){
 var $ = _dereq_('../../modules/$');
 _dereq_('../../modules/es6.object.get-own-property-descriptor');
 module.exports = function getOwnPropertyDescriptor(it, key){
   return $.getDesc(it, key);
 };
-},{"../../modules/$":67,"../../modules/es6.object.get-own-property-descriptor":73}],54:[function(_dereq_,module,exports){
+},{"../../modules/$":98,"../../modules/es6.object.get-own-property-descriptor":121}],65:[function(_dereq_,module,exports){
 _dereq_('../../modules/es6.object.keys');
 module.exports = _dereq_('../../modules/$.core').Object.keys;
-},{"../../modules/$.core":59,"../../modules/es6.object.keys":74}],55:[function(_dereq_,module,exports){
+},{"../../modules/$.core":79,"../../modules/es6.object.keys":122}],66:[function(_dereq_,module,exports){
 _dereq_('../../modules/es6.object.set-prototype-of');
 module.exports = _dereq_('../../modules/$.core').Object.setPrototypeOf;
-},{"../../modules/$.core":59,"../../modules/es6.object.set-prototype-of":75}],56:[function(_dereq_,module,exports){
+},{"../../modules/$.core":79,"../../modules/es6.object.set-prototype-of":123}],67:[function(_dereq_,module,exports){
+_dereq_('../modules/es6.object.to-string');
+_dereq_('../modules/web.dom.iterable');
+_dereq_('../modules/es6.weak-map');
+module.exports = _dereq_('../modules/$.core').WeakMap;
+},{"../modules/$.core":79,"../modules/es6.object.to-string":124,"../modules/es6.weak-map":126,"../modules/web.dom.iterable":128}],68:[function(_dereq_,module,exports){
 module.exports = function(it){
   if(typeof it != 'function')throw TypeError(it + ' is not a function!');
   return it;
 };
-},{}],57:[function(_dereq_,module,exports){
+},{}],69:[function(_dereq_,module,exports){
+module.exports = function(){ /* empty */ };
+},{}],70:[function(_dereq_,module,exports){
 var isObject = _dereq_('./$.is-object');
 module.exports = function(it){
   if(!isObject(it))throw TypeError(it + ' is not an object!');
   return it;
 };
-},{"./$.is-object":66}],58:[function(_dereq_,module,exports){
+},{"./$.is-object":92}],71:[function(_dereq_,module,exports){
+// 0 -> Array#forEach
+// 1 -> Array#map
+// 2 -> Array#filter
+// 3 -> Array#some
+// 4 -> Array#every
+// 5 -> Array#find
+// 6 -> Array#findIndex
+var ctx      = _dereq_('./$.ctx')
+  , IObject  = _dereq_('./$.iobject')
+  , toObject = _dereq_('./$.to-object')
+  , toLength = _dereq_('./$.to-length')
+  , asc      = _dereq_('./$.array-species-create');
+module.exports = function(TYPE){
+  var IS_MAP        = TYPE == 1
+    , IS_FILTER     = TYPE == 2
+    , IS_SOME       = TYPE == 3
+    , IS_EVERY      = TYPE == 4
+    , IS_FIND_INDEX = TYPE == 6
+    , NO_HOLES      = TYPE == 5 || IS_FIND_INDEX;
+  return function($this, callbackfn, that){
+    var O      = toObject($this)
+      , self   = IObject(O)
+      , f      = ctx(callbackfn, that, 3)
+      , length = toLength(self.length)
+      , index  = 0
+      , result = IS_MAP ? asc($this, length) : IS_FILTER ? asc($this, 0) : undefined
+      , val, res;
+    for(;length > index; index++)if(NO_HOLES || index in self){
+      val = self[index];
+      res = f(val, index, O);
+      if(TYPE){
+        if(IS_MAP)result[index] = res;            // map
+        else if(res)switch(TYPE){
+          case 3: return true;                    // some
+          case 5: return val;                     // find
+          case 6: return index;                   // findIndex
+          case 2: result.push(val);               // filter
+        } else if(IS_EVERY)return false;          // every
+      }
+    }
+    return IS_FIND_INDEX ? -1 : IS_SOME || IS_EVERY ? IS_EVERY : result;
+  };
+};
+},{"./$.array-species-create":72,"./$.ctx":80,"./$.iobject":89,"./$.to-length":112,"./$.to-object":113}],72:[function(_dereq_,module,exports){
+// 9.4.2.3 ArraySpeciesCreate(originalArray, length)
+var isObject = _dereq_('./$.is-object')
+  , isArray  = _dereq_('./$.is-array')
+  , SPECIES  = _dereq_('./$.wks')('species');
+module.exports = function(original, length){
+  var C;
+  if(isArray(original)){
+    C = original.constructor;
+    // cross-realm fallback
+    if(typeof C == 'function' && (C === Array || isArray(C.prototype)))C = undefined;
+    if(isObject(C)){
+      C = C[SPECIES];
+      if(C === null)C = undefined;
+    }
+  } return new (C === undefined ? Array : C)(length);
+};
+},{"./$.is-array":91,"./$.is-object":92,"./$.wks":115}],73:[function(_dereq_,module,exports){
+// getting tag from 19.1.3.6 Object.prototype.toString()
+var cof = _dereq_('./$.cof')
+  , TAG = _dereq_('./$.wks')('toStringTag')
+  // ES3 wrong here
+  , ARG = cof(function(){ return arguments; }()) == 'Arguments';
+
+module.exports = function(it){
+  var O, T, B;
+  return it === undefined ? 'Undefined' : it === null ? 'Null'
+    // @@toStringTag case
+    : typeof (T = (O = Object(it))[TAG]) == 'string' ? T
+    // builtinTag case
+    : ARG ? cof(O)
+    // ES3 arguments fallback
+    : (B = cof(O)) == 'Object' && typeof O.callee == 'function' ? 'Arguments' : B;
+};
+},{"./$.cof":74,"./$.wks":115}],74:[function(_dereq_,module,exports){
 var toString = {}.toString;
 
 module.exports = function(it){
   return toString.call(it).slice(8, -1);
 };
-},{}],59:[function(_dereq_,module,exports){
-var core = module.exports = {version: '1.2.1'};
+},{}],75:[function(_dereq_,module,exports){
+'use strict';
+var $            = _dereq_('./$')
+  , hide         = _dereq_('./$.hide')
+  , redefineAll  = _dereq_('./$.redefine-all')
+  , ctx          = _dereq_('./$.ctx')
+  , strictNew    = _dereq_('./$.strict-new')
+  , defined      = _dereq_('./$.defined')
+  , forOf        = _dereq_('./$.for-of')
+  , $iterDefine  = _dereq_('./$.iter-define')
+  , step         = _dereq_('./$.iter-step')
+  , ID           = _dereq_('./$.uid')('id')
+  , $has         = _dereq_('./$.has')
+  , isObject     = _dereq_('./$.is-object')
+  , setSpecies   = _dereq_('./$.set-species')
+  , DESCRIPTORS  = _dereq_('./$.descriptors')
+  , isExtensible = Object.isExtensible || isObject
+  , SIZE         = DESCRIPTORS ? '_s' : 'size'
+  , id           = 0;
+
+var fastKey = function(it, create){
+  // return primitive with prefix
+  if(!isObject(it))return typeof it == 'symbol' ? it : (typeof it == 'string' ? 'S' : 'P') + it;
+  if(!$has(it, ID)){
+    // can't set id to frozen object
+    if(!isExtensible(it))return 'F';
+    // not necessary to add id
+    if(!create)return 'E';
+    // add missing object id
+    hide(it, ID, ++id);
+  // return object id with prefix
+  } return 'O' + it[ID];
+};
+
+var getEntry = function(that, key){
+  // fast case
+  var index = fastKey(key), entry;
+  if(index !== 'F')return that._i[index];
+  // frozen object case
+  for(entry = that._f; entry; entry = entry.n){
+    if(entry.k == key)return entry;
+  }
+};
+
+module.exports = {
+  getConstructor: function(wrapper, NAME, IS_MAP, ADDER){
+    var C = wrapper(function(that, iterable){
+      strictNew(that, C, NAME);
+      that._i = $.create(null); // index
+      that._f = undefined;      // first entry
+      that._l = undefined;      // last entry
+      that[SIZE] = 0;           // size
+      if(iterable != undefined)forOf(iterable, IS_MAP, that[ADDER], that);
+    });
+    redefineAll(C.prototype, {
+      // 23.1.3.1 Map.prototype.clear()
+      // 23.2.3.2 Set.prototype.clear()
+      clear: function clear(){
+        for(var that = this, data = that._i, entry = that._f; entry; entry = entry.n){
+          entry.r = true;
+          if(entry.p)entry.p = entry.p.n = undefined;
+          delete data[entry.i];
+        }
+        that._f = that._l = undefined;
+        that[SIZE] = 0;
+      },
+      // 23.1.3.3 Map.prototype.delete(key)
+      // 23.2.3.4 Set.prototype.delete(value)
+      'delete': function(key){
+        var that  = this
+          , entry = getEntry(that, key);
+        if(entry){
+          var next = entry.n
+            , prev = entry.p;
+          delete that._i[entry.i];
+          entry.r = true;
+          if(prev)prev.n = next;
+          if(next)next.p = prev;
+          if(that._f == entry)that._f = next;
+          if(that._l == entry)that._l = prev;
+          that[SIZE]--;
+        } return !!entry;
+      },
+      // 23.2.3.6 Set.prototype.forEach(callbackfn, thisArg = undefined)
+      // 23.1.3.5 Map.prototype.forEach(callbackfn, thisArg = undefined)
+      forEach: function forEach(callbackfn /*, that = undefined */){
+        var f = ctx(callbackfn, arguments.length > 1 ? arguments[1] : undefined, 3)
+          , entry;
+        while(entry = entry ? entry.n : this._f){
+          f(entry.v, entry.k, this);
+          // revert to the last existing entry
+          while(entry && entry.r)entry = entry.p;
+        }
+      },
+      // 23.1.3.7 Map.prototype.has(key)
+      // 23.2.3.7 Set.prototype.has(value)
+      has: function has(key){
+        return !!getEntry(this, key);
+      }
+    });
+    if(DESCRIPTORS)$.setDesc(C.prototype, 'size', {
+      get: function(){
+        return defined(this[SIZE]);
+      }
+    });
+    return C;
+  },
+  def: function(that, key, value){
+    var entry = getEntry(that, key)
+      , prev, index;
+    // change existing entry
+    if(entry){
+      entry.v = value;
+    // create new entry
+    } else {
+      that._l = entry = {
+        i: index = fastKey(key, true), // <- index
+        k: key,                        // <- key
+        v: value,                      // <- value
+        p: prev = that._l,             // <- previous entry
+        n: undefined,                  // <- next entry
+        r: false                       // <- removed
+      };
+      if(!that._f)that._f = entry;
+      if(prev)prev.n = entry;
+      that[SIZE]++;
+      // add to index
+      if(index !== 'F')that._i[index] = entry;
+    } return that;
+  },
+  getEntry: getEntry,
+  setStrong: function(C, NAME, IS_MAP){
+    // add .keys, .values, .entries, [@@iterator]
+    // 23.1.3.4, 23.1.3.8, 23.1.3.11, 23.1.3.12, 23.2.3.5, 23.2.3.8, 23.2.3.10, 23.2.3.11
+    $iterDefine(C, NAME, function(iterated, kind){
+      this._t = iterated;  // target
+      this._k = kind;      // kind
+      this._l = undefined; // previous
+    }, function(){
+      var that  = this
+        , kind  = that._k
+        , entry = that._l;
+      // revert to the last existing entry
+      while(entry && entry.r)entry = entry.p;
+      // get next entry
+      if(!that._t || !(that._l = entry = entry ? entry.n : that._t._f)){
+        // or finish the iteration
+        that._t = undefined;
+        return step(1);
+      }
+      // return step by kind
+      if(kind == 'keys'  )return step(0, entry.k);
+      if(kind == 'values')return step(0, entry.v);
+      return step(0, [entry.k, entry.v]);
+    }, IS_MAP ? 'entries' : 'values' , !IS_MAP, true);
+
+    // add [@@species], 23.1.2.2, 23.2.2.2
+    setSpecies(NAME);
+  }
+};
+},{"./$":98,"./$.ctx":80,"./$.defined":81,"./$.descriptors":82,"./$.for-of":85,"./$.has":87,"./$.hide":88,"./$.is-object":92,"./$.iter-define":95,"./$.iter-step":96,"./$.redefine-all":102,"./$.set-species":105,"./$.strict-new":108,"./$.uid":114}],76:[function(_dereq_,module,exports){
+// https://github.com/DavidBruant/Map-Set.prototype.toJSON
+var forOf   = _dereq_('./$.for-of')
+  , classof = _dereq_('./$.classof');
+module.exports = function(NAME){
+  return function toJSON(){
+    if(classof(this) != NAME)throw TypeError(NAME + "#toJSON isn't generic");
+    var arr = [];
+    forOf(this, false, arr.push, arr);
+    return arr;
+  };
+};
+},{"./$.classof":73,"./$.for-of":85}],77:[function(_dereq_,module,exports){
+'use strict';
+var hide              = _dereq_('./$.hide')
+  , redefineAll       = _dereq_('./$.redefine-all')
+  , anObject          = _dereq_('./$.an-object')
+  , isObject          = _dereq_('./$.is-object')
+  , strictNew         = _dereq_('./$.strict-new')
+  , forOf             = _dereq_('./$.for-of')
+  , createArrayMethod = _dereq_('./$.array-methods')
+  , $has              = _dereq_('./$.has')
+  , WEAK              = _dereq_('./$.uid')('weak')
+  , isExtensible      = Object.isExtensible || isObject
+  , arrayFind         = createArrayMethod(5)
+  , arrayFindIndex    = createArrayMethod(6)
+  , id                = 0;
+
+// fallback for frozen keys
+var frozenStore = function(that){
+  return that._l || (that._l = new FrozenStore);
+};
+var FrozenStore = function(){
+  this.a = [];
+};
+var findFrozen = function(store, key){
+  return arrayFind(store.a, function(it){
+    return it[0] === key;
+  });
+};
+FrozenStore.prototype = {
+  get: function(key){
+    var entry = findFrozen(this, key);
+    if(entry)return entry[1];
+  },
+  has: function(key){
+    return !!findFrozen(this, key);
+  },
+  set: function(key, value){
+    var entry = findFrozen(this, key);
+    if(entry)entry[1] = value;
+    else this.a.push([key, value]);
+  },
+  'delete': function(key){
+    var index = arrayFindIndex(this.a, function(it){
+      return it[0] === key;
+    });
+    if(~index)this.a.splice(index, 1);
+    return !!~index;
+  }
+};
+
+module.exports = {
+  getConstructor: function(wrapper, NAME, IS_MAP, ADDER){
+    var C = wrapper(function(that, iterable){
+      strictNew(that, C, NAME);
+      that._i = id++;      // collection id
+      that._l = undefined; // leak store for frozen objects
+      if(iterable != undefined)forOf(iterable, IS_MAP, that[ADDER], that);
+    });
+    redefineAll(C.prototype, {
+      // 23.3.3.2 WeakMap.prototype.delete(key)
+      // 23.4.3.3 WeakSet.prototype.delete(value)
+      'delete': function(key){
+        if(!isObject(key))return false;
+        if(!isExtensible(key))return frozenStore(this)['delete'](key);
+        return $has(key, WEAK) && $has(key[WEAK], this._i) && delete key[WEAK][this._i];
+      },
+      // 23.3.3.4 WeakMap.prototype.has(key)
+      // 23.4.3.4 WeakSet.prototype.has(value)
+      has: function has(key){
+        if(!isObject(key))return false;
+        if(!isExtensible(key))return frozenStore(this).has(key);
+        return $has(key, WEAK) && $has(key[WEAK], this._i);
+      }
+    });
+    return C;
+  },
+  def: function(that, key, value){
+    if(!isExtensible(anObject(key))){
+      frozenStore(that).set(key, value);
+    } else {
+      $has(key, WEAK) || hide(key, WEAK, {});
+      key[WEAK][that._i] = value;
+    } return that;
+  },
+  frozenStore: frozenStore,
+  WEAK: WEAK
+};
+},{"./$.an-object":70,"./$.array-methods":71,"./$.for-of":85,"./$.has":87,"./$.hide":88,"./$.is-object":92,"./$.redefine-all":102,"./$.strict-new":108,"./$.uid":114}],78:[function(_dereq_,module,exports){
+'use strict';
+var $              = _dereq_('./$')
+  , global         = _dereq_('./$.global')
+  , $export        = _dereq_('./$.export')
+  , fails          = _dereq_('./$.fails')
+  , hide           = _dereq_('./$.hide')
+  , redefineAll    = _dereq_('./$.redefine-all')
+  , forOf          = _dereq_('./$.for-of')
+  , strictNew      = _dereq_('./$.strict-new')
+  , isObject       = _dereq_('./$.is-object')
+  , setToStringTag = _dereq_('./$.set-to-string-tag')
+  , DESCRIPTORS    = _dereq_('./$.descriptors');
+
+module.exports = function(NAME, wrapper, methods, common, IS_MAP, IS_WEAK){
+  var Base  = global[NAME]
+    , C     = Base
+    , ADDER = IS_MAP ? 'set' : 'add'
+    , proto = C && C.prototype
+    , O     = {};
+  if(!DESCRIPTORS || typeof C != 'function' || !(IS_WEAK || proto.forEach && !fails(function(){
+    new C().entries().next();
+  }))){
+    // create collection constructor
+    C = common.getConstructor(wrapper, NAME, IS_MAP, ADDER);
+    redefineAll(C.prototype, methods);
+  } else {
+    C = wrapper(function(target, iterable){
+      strictNew(target, C, NAME);
+      target._c = new Base;
+      if(iterable != undefined)forOf(iterable, IS_MAP, target[ADDER], target);
+    });
+    $.each.call('add,clear,delete,forEach,get,has,set,keys,values,entries'.split(','),function(KEY){
+      var IS_ADDER = KEY == 'add' || KEY == 'set';
+      if(KEY in proto && !(IS_WEAK && KEY == 'clear'))hide(C.prototype, KEY, function(a, b){
+        if(!IS_ADDER && IS_WEAK && !isObject(a))return KEY == 'get' ? undefined : false;
+        var result = this._c[KEY](a === 0 ? 0 : a, b);
+        return IS_ADDER ? this : result;
+      });
+    });
+    if('size' in proto)$.setDesc(C.prototype, 'size', {
+      get: function(){
+        return this._c.size;
+      }
+    });
+  }
+
+  setToStringTag(C, NAME);
+
+  O[NAME] = C;
+  $export($export.G + $export.W + $export.F, O);
+
+  if(!IS_WEAK)common.setStrong(C, NAME, IS_MAP);
+
+  return C;
+};
+},{"./$":98,"./$.descriptors":82,"./$.export":83,"./$.fails":84,"./$.for-of":85,"./$.global":86,"./$.hide":88,"./$.is-object":92,"./$.redefine-all":102,"./$.set-to-string-tag":106,"./$.strict-new":108}],79:[function(_dereq_,module,exports){
+var core = module.exports = {version: '1.2.6'};
 if(typeof __e == 'number')__e = core; // eslint-disable-line no-undef
-},{}],60:[function(_dereq_,module,exports){
+},{}],80:[function(_dereq_,module,exports){
 // optional / simple context binding
 var aFunction = _dereq_('./$.a-function');
 module.exports = function(fn, that, length){
@@ -9592,61 +11805,65 @@ module.exports = function(fn, that, length){
     return fn.apply(that, arguments);
   };
 };
-},{"./$.a-function":56}],61:[function(_dereq_,module,exports){
-var global    = _dereq_('./$.global')
-  , core      = _dereq_('./$.core')
-  , PROTOTYPE = 'prototype';
-var ctx = function(fn, that){
-  return function(){
-    return fn.apply(that, arguments);
-  };
-};
-var $def = function(type, name, source){
-  var key, own, out, exp
-    , isGlobal = type & $def.G
-    , isProto  = type & $def.P
-    , target   = isGlobal ? global : type & $def.S
-        ? global[name] : (global[name] || {})[PROTOTYPE]
-    , exports  = isGlobal ? core : core[name] || (core[name] = {});
-  if(isGlobal)source = name;
-  for(key in source){
-    // contains in native
-    own = !(type & $def.F) && target && key in target;
-    if(own && key in exports)continue;
-    // export native or passed
-    out = own ? target[key] : source[key];
-    // prevent global pollution for namespaces
-    if(isGlobal && typeof target[key] != 'function')exp = source[key];
-    // bind timers to global for call from export context
-    else if(type & $def.B && own)exp = ctx(out, global);
-    // wrap global constructors for prevent change them in library
-    else if(type & $def.W && target[key] == out)!function(C){
-      exp = function(param){
-        return this instanceof C ? new C(param) : C(param);
-      };
-      exp[PROTOTYPE] = C[PROTOTYPE];
-    }(out);
-    else exp = isProto && typeof out == 'function' ? ctx(Function.call, out) : out;
-    // export
-    exports[key] = exp;
-    if(isProto)(exports[PROTOTYPE] || (exports[PROTOTYPE] = {}))[key] = out;
-  }
-};
-// type bitmap
-$def.F = 1;  // forced
-$def.G = 2;  // global
-$def.S = 4;  // static
-$def.P = 8;  // proto
-$def.B = 16; // bind
-$def.W = 32; // wrap
-module.exports = $def;
-},{"./$.core":59,"./$.global":64}],62:[function(_dereq_,module,exports){
+},{"./$.a-function":68}],81:[function(_dereq_,module,exports){
 // 7.2.1 RequireObjectCoercible(argument)
 module.exports = function(it){
   if(it == undefined)throw TypeError("Can't call method on  " + it);
   return it;
 };
-},{}],63:[function(_dereq_,module,exports){
+},{}],82:[function(_dereq_,module,exports){
+// Thank's IE8 for his funny defineProperty
+module.exports = !_dereq_('./$.fails')(function(){
+  return Object.defineProperty({}, 'a', {get: function(){ return 7; }}).a != 7;
+});
+},{"./$.fails":84}],83:[function(_dereq_,module,exports){
+var global    = _dereq_('./$.global')
+  , core      = _dereq_('./$.core')
+  , ctx       = _dereq_('./$.ctx')
+  , PROTOTYPE = 'prototype';
+
+var $export = function(type, name, source){
+  var IS_FORCED = type & $export.F
+    , IS_GLOBAL = type & $export.G
+    , IS_STATIC = type & $export.S
+    , IS_PROTO  = type & $export.P
+    , IS_BIND   = type & $export.B
+    , IS_WRAP   = type & $export.W
+    , exports   = IS_GLOBAL ? core : core[name] || (core[name] = {})
+    , target    = IS_GLOBAL ? global : IS_STATIC ? global[name] : (global[name] || {})[PROTOTYPE]
+    , key, own, out;
+  if(IS_GLOBAL)source = name;
+  for(key in source){
+    // contains in native
+    own = !IS_FORCED && target && key in target;
+    if(own && key in exports)continue;
+    // export native or passed
+    out = own ? target[key] : source[key];
+    // prevent global pollution for namespaces
+    exports[key] = IS_GLOBAL && typeof target[key] != 'function' ? source[key]
+    // bind timers to global for call from export context
+    : IS_BIND && own ? ctx(out, global)
+    // wrap global constructors for prevent change them in library
+    : IS_WRAP && target[key] == out ? (function(C){
+      var F = function(param){
+        return this instanceof C ? new C(param) : C(param);
+      };
+      F[PROTOTYPE] = C[PROTOTYPE];
+      return F;
+    // make static versions for prototype methods
+    })(out) : IS_PROTO && typeof out == 'function' ? ctx(Function.call, out) : out;
+    if(IS_PROTO)(exports[PROTOTYPE] || (exports[PROTOTYPE] = {}))[key] = out;
+  }
+};
+// type bitmap
+$export.F = 1;  // forced
+$export.G = 2;  // global
+$export.S = 4;  // static
+$export.P = 8;  // proto
+$export.B = 16; // bind
+$export.W = 32; // wrap
+module.exports = $export;
+},{"./$.core":79,"./$.ctx":80,"./$.global":86}],84:[function(_dereq_,module,exports){
 module.exports = function(exec){
   try {
     return !!exec();
@@ -9654,23 +11871,171 @@ module.exports = function(exec){
     return true;
   }
 };
-},{}],64:[function(_dereq_,module,exports){
+},{}],85:[function(_dereq_,module,exports){
+var ctx         = _dereq_('./$.ctx')
+  , call        = _dereq_('./$.iter-call')
+  , isArrayIter = _dereq_('./$.is-array-iter')
+  , anObject    = _dereq_('./$.an-object')
+  , toLength    = _dereq_('./$.to-length')
+  , getIterFn   = _dereq_('./core.get-iterator-method');
+module.exports = function(iterable, entries, fn, that){
+  var iterFn = getIterFn(iterable)
+    , f      = ctx(fn, that, entries ? 2 : 1)
+    , index  = 0
+    , length, step, iterator;
+  if(typeof iterFn != 'function')throw TypeError(iterable + ' is not iterable!');
+  // fast case for arrays with default iterator
+  if(isArrayIter(iterFn))for(length = toLength(iterable.length); length > index; index++){
+    entries ? f(anObject(step = iterable[index])[0], step[1]) : f(iterable[index]);
+  } else for(iterator = iterFn.call(iterable); !(step = iterator.next()).done; ){
+    call(iterator, f, step.value, entries);
+  }
+};
+},{"./$.an-object":70,"./$.ctx":80,"./$.is-array-iter":90,"./$.iter-call":93,"./$.to-length":112,"./core.get-iterator-method":116}],86:[function(_dereq_,module,exports){
 // https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
-var UNDEFINED = 'undefined';
-var global = module.exports = typeof window != UNDEFINED && window.Math == Math
-  ? window : typeof self != UNDEFINED && self.Math == Math ? self : Function('return this')();
+var global = module.exports = typeof window != 'undefined' && window.Math == Math
+  ? window : typeof self != 'undefined' && self.Math == Math ? self : Function('return this')();
 if(typeof __g == 'number')__g = global; // eslint-disable-line no-undef
-},{}],65:[function(_dereq_,module,exports){
-// indexed object, fallback for non-array-like ES3 strings
+},{}],87:[function(_dereq_,module,exports){
+var hasOwnProperty = {}.hasOwnProperty;
+module.exports = function(it, key){
+  return hasOwnProperty.call(it, key);
+};
+},{}],88:[function(_dereq_,module,exports){
+var $          = _dereq_('./$')
+  , createDesc = _dereq_('./$.property-desc');
+module.exports = _dereq_('./$.descriptors') ? function(object, key, value){
+  return $.setDesc(object, key, createDesc(1, value));
+} : function(object, key, value){
+  object[key] = value;
+  return object;
+};
+},{"./$":98,"./$.descriptors":82,"./$.property-desc":101}],89:[function(_dereq_,module,exports){
+// fallback for non-array-like ES3 and non-enumerable old V8 strings
 var cof = _dereq_('./$.cof');
-module.exports = 0 in Object('z') ? Object : function(it){
+module.exports = Object('z').propertyIsEnumerable(0) ? Object : function(it){
   return cof(it) == 'String' ? it.split('') : Object(it);
 };
-},{"./$.cof":58}],66:[function(_dereq_,module,exports){
+},{"./$.cof":74}],90:[function(_dereq_,module,exports){
+// check on default Array iterator
+var Iterators  = _dereq_('./$.iterators')
+  , ITERATOR   = _dereq_('./$.wks')('iterator')
+  , ArrayProto = Array.prototype;
+
+module.exports = function(it){
+  return it !== undefined && (Iterators.Array === it || ArrayProto[ITERATOR] === it);
+};
+},{"./$.iterators":97,"./$.wks":115}],91:[function(_dereq_,module,exports){
+// 7.2.2 IsArray(argument)
+var cof = _dereq_('./$.cof');
+module.exports = Array.isArray || function(arg){
+  return cof(arg) == 'Array';
+};
+},{"./$.cof":74}],92:[function(_dereq_,module,exports){
 module.exports = function(it){
   return typeof it === 'object' ? it !== null : typeof it === 'function';
 };
-},{}],67:[function(_dereq_,module,exports){
+},{}],93:[function(_dereq_,module,exports){
+// call something on iterator step with safe closing on error
+var anObject = _dereq_('./$.an-object');
+module.exports = function(iterator, fn, value, entries){
+  try {
+    return entries ? fn(anObject(value)[0], value[1]) : fn(value);
+  // 7.4.6 IteratorClose(iterator, completion)
+  } catch(e){
+    var ret = iterator['return'];
+    if(ret !== undefined)anObject(ret.call(iterator));
+    throw e;
+  }
+};
+},{"./$.an-object":70}],94:[function(_dereq_,module,exports){
+'use strict';
+var $              = _dereq_('./$')
+  , descriptor     = _dereq_('./$.property-desc')
+  , setToStringTag = _dereq_('./$.set-to-string-tag')
+  , IteratorPrototype = {};
+
+// 25.1.2.1.1 %IteratorPrototype%[@@iterator]()
+_dereq_('./$.hide')(IteratorPrototype, _dereq_('./$.wks')('iterator'), function(){ return this; });
+
+module.exports = function(Constructor, NAME, next){
+  Constructor.prototype = $.create(IteratorPrototype, {next: descriptor(1, next)});
+  setToStringTag(Constructor, NAME + ' Iterator');
+};
+},{"./$":98,"./$.hide":88,"./$.property-desc":101,"./$.set-to-string-tag":106,"./$.wks":115}],95:[function(_dereq_,module,exports){
+'use strict';
+var LIBRARY        = _dereq_('./$.library')
+  , $export        = _dereq_('./$.export')
+  , redefine       = _dereq_('./$.redefine')
+  , hide           = _dereq_('./$.hide')
+  , has            = _dereq_('./$.has')
+  , Iterators      = _dereq_('./$.iterators')
+  , $iterCreate    = _dereq_('./$.iter-create')
+  , setToStringTag = _dereq_('./$.set-to-string-tag')
+  , getProto       = _dereq_('./$').getProto
+  , ITERATOR       = _dereq_('./$.wks')('iterator')
+  , BUGGY          = !([].keys && 'next' in [].keys()) // Safari has buggy iterators w/o `next`
+  , FF_ITERATOR    = '@@iterator'
+  , KEYS           = 'keys'
+  , VALUES         = 'values';
+
+var returnThis = function(){ return this; };
+
+module.exports = function(Base, NAME, Constructor, next, DEFAULT, IS_SET, FORCED){
+  $iterCreate(Constructor, NAME, next);
+  var getMethod = function(kind){
+    if(!BUGGY && kind in proto)return proto[kind];
+    switch(kind){
+      case KEYS: return function keys(){ return new Constructor(this, kind); };
+      case VALUES: return function values(){ return new Constructor(this, kind); };
+    } return function entries(){ return new Constructor(this, kind); };
+  };
+  var TAG        = NAME + ' Iterator'
+    , DEF_VALUES = DEFAULT == VALUES
+    , VALUES_BUG = false
+    , proto      = Base.prototype
+    , $native    = proto[ITERATOR] || proto[FF_ITERATOR] || DEFAULT && proto[DEFAULT]
+    , $default   = $native || getMethod(DEFAULT)
+    , methods, key;
+  // Fix native
+  if($native){
+    var IteratorPrototype = getProto($default.call(new Base));
+    // Set @@toStringTag to native iterators
+    setToStringTag(IteratorPrototype, TAG, true);
+    // FF fix
+    if(!LIBRARY && has(proto, FF_ITERATOR))hide(IteratorPrototype, ITERATOR, returnThis);
+    // fix Array#{values, @@iterator}.name in V8 / FF
+    if(DEF_VALUES && $native.name !== VALUES){
+      VALUES_BUG = true;
+      $default = function values(){ return $native.call(this); };
+    }
+  }
+  // Define iterator
+  if((!LIBRARY || FORCED) && (BUGGY || VALUES_BUG || !proto[ITERATOR])){
+    hide(proto, ITERATOR, $default);
+  }
+  // Plug for library
+  Iterators[NAME] = $default;
+  Iterators[TAG]  = returnThis;
+  if(DEFAULT){
+    methods = {
+      values:  DEF_VALUES  ? $default : getMethod(VALUES),
+      keys:    IS_SET      ? $default : getMethod(KEYS),
+      entries: !DEF_VALUES ? $default : getMethod('entries')
+    };
+    if(FORCED)for(key in methods){
+      if(!(key in proto))redefine(proto, key, methods[key]);
+    } else $export($export.P + $export.F * (BUGGY || VALUES_BUG), NAME, methods);
+  }
+  return methods;
+};
+},{"./$":98,"./$.export":83,"./$.has":87,"./$.hide":88,"./$.iter-create":94,"./$.iterators":97,"./$.library":99,"./$.redefine":103,"./$.set-to-string-tag":106,"./$.wks":115}],96:[function(_dereq_,module,exports){
+module.exports = function(done, value){
+  return {value: value, done: !!done};
+};
+},{}],97:[function(_dereq_,module,exports){
+module.exports = {};
+},{}],98:[function(_dereq_,module,exports){
 var $Object = Object;
 module.exports = {
   create:     $Object.create,
@@ -9684,16 +12049,37 @@ module.exports = {
   getSymbols: $Object.getOwnPropertySymbols,
   each:       [].forEach
 };
-},{}],68:[function(_dereq_,module,exports){
+},{}],99:[function(_dereq_,module,exports){
+module.exports = true;
+},{}],100:[function(_dereq_,module,exports){
 // most Object methods by ES6 should accept primitives
+var $export = _dereq_('./$.export')
+  , core    = _dereq_('./$.core')
+  , fails   = _dereq_('./$.fails');
 module.exports = function(KEY, exec){
-  var $def = _dereq_('./$.def')
-    , fn   = (_dereq_('./$.core').Object || {})[KEY] || Object[KEY]
-    , exp  = {};
+  var fn  = (core.Object || {})[KEY] || Object[KEY]
+    , exp = {};
   exp[KEY] = exec(fn);
-  $def($def.S + $def.F * _dereq_('./$.fails')(function(){ fn(1); }), 'Object', exp);
+  $export($export.S + $export.F * fails(function(){ fn(1); }), 'Object', exp);
 };
-},{"./$.core":59,"./$.def":61,"./$.fails":63}],69:[function(_dereq_,module,exports){
+},{"./$.core":79,"./$.export":83,"./$.fails":84}],101:[function(_dereq_,module,exports){
+module.exports = function(bitmap, value){
+  return {
+    enumerable  : !(bitmap & 1),
+    configurable: !(bitmap & 2),
+    writable    : !(bitmap & 4),
+    value       : value
+  };
+};
+},{}],102:[function(_dereq_,module,exports){
+var redefine = _dereq_('./$.redefine');
+module.exports = function(target, src){
+  for(var key in src)redefine(target, key, src[key]);
+  return target;
+};
+},{"./$.redefine":103}],103:[function(_dereq_,module,exports){
+module.exports = _dereq_('./$.hide');
+},{"./$.hide":88}],104:[function(_dereq_,module,exports){
 // Works with __proto__ only. Old v8 can't work with null proto objects.
 /* eslint-disable no-proto */
 var getDesc  = _dereq_('./$').getDesc
@@ -9704,7 +12090,7 @@ var check = function(O, proto){
   if(!isObject(proto) && proto !== null)throw TypeError(proto + ": can't set as prototype!");
 };
 module.exports = {
-  set: Object.setPrototypeOf || ('__proto__' in {} ? // eslint-disable-line no-proto
+  set: Object.setPrototypeOf || ('__proto__' in {} ? // eslint-disable-line
     function(test, buggy, set){
       try {
         set = _dereq_('./$.ctx')(Function.call, getDesc(Object.prototype, '__proto__').set, 2);
@@ -9720,20 +12106,170 @@ module.exports = {
     }({}, false) : undefined),
   check: check
 };
-},{"./$":67,"./$.an-object":57,"./$.ctx":60,"./$.is-object":66}],70:[function(_dereq_,module,exports){
+},{"./$":98,"./$.an-object":70,"./$.ctx":80,"./$.is-object":92}],105:[function(_dereq_,module,exports){
+'use strict';
+var core        = _dereq_('./$.core')
+  , $           = _dereq_('./$')
+  , DESCRIPTORS = _dereq_('./$.descriptors')
+  , SPECIES     = _dereq_('./$.wks')('species');
+
+module.exports = function(KEY){
+  var C = core[KEY];
+  if(DESCRIPTORS && C && !C[SPECIES])$.setDesc(C, SPECIES, {
+    configurable: true,
+    get: function(){ return this; }
+  });
+};
+},{"./$":98,"./$.core":79,"./$.descriptors":82,"./$.wks":115}],106:[function(_dereq_,module,exports){
+var def = _dereq_('./$').setDesc
+  , has = _dereq_('./$.has')
+  , TAG = _dereq_('./$.wks')('toStringTag');
+
+module.exports = function(it, tag, stat){
+  if(it && !has(it = stat ? it : it.prototype, TAG))def(it, TAG, {configurable: true, value: tag});
+};
+},{"./$":98,"./$.has":87,"./$.wks":115}],107:[function(_dereq_,module,exports){
+var global = _dereq_('./$.global')
+  , SHARED = '__core-js_shared__'
+  , store  = global[SHARED] || (global[SHARED] = {});
+module.exports = function(key){
+  return store[key] || (store[key] = {});
+};
+},{"./$.global":86}],108:[function(_dereq_,module,exports){
+module.exports = function(it, Constructor, name){
+  if(!(it instanceof Constructor))throw TypeError(name + ": use the 'new' operator!");
+  return it;
+};
+},{}],109:[function(_dereq_,module,exports){
+var toInteger = _dereq_('./$.to-integer')
+  , defined   = _dereq_('./$.defined');
+// true  -> String#at
+// false -> String#codePointAt
+module.exports = function(TO_STRING){
+  return function(that, pos){
+    var s = String(defined(that))
+      , i = toInteger(pos)
+      , l = s.length
+      , a, b;
+    if(i < 0 || i >= l)return TO_STRING ? '' : undefined;
+    a = s.charCodeAt(i);
+    return a < 0xd800 || a > 0xdbff || i + 1 === l || (b = s.charCodeAt(i + 1)) < 0xdc00 || b > 0xdfff
+      ? TO_STRING ? s.charAt(i) : a
+      : TO_STRING ? s.slice(i, i + 2) : (a - 0xd800 << 10) + (b - 0xdc00) + 0x10000;
+  };
+};
+},{"./$.defined":81,"./$.to-integer":110}],110:[function(_dereq_,module,exports){
+// 7.1.4 ToInteger
+var ceil  = Math.ceil
+  , floor = Math.floor;
+module.exports = function(it){
+  return isNaN(it = +it) ? 0 : (it > 0 ? floor : ceil)(it);
+};
+},{}],111:[function(_dereq_,module,exports){
 // to indexed object, toObject with fallback for non-array-like ES3 strings
 var IObject = _dereq_('./$.iobject')
   , defined = _dereq_('./$.defined');
 module.exports = function(it){
   return IObject(defined(it));
 };
-},{"./$.defined":62,"./$.iobject":65}],71:[function(_dereq_,module,exports){
+},{"./$.defined":81,"./$.iobject":89}],112:[function(_dereq_,module,exports){
+// 7.1.15 ToLength
+var toInteger = _dereq_('./$.to-integer')
+  , min       = Math.min;
+module.exports = function(it){
+  return it > 0 ? min(toInteger(it), 0x1fffffffffffff) : 0; // pow(2, 53) - 1 == 9007199254740991
+};
+},{"./$.to-integer":110}],113:[function(_dereq_,module,exports){
 // 7.1.13 ToObject(argument)
 var defined = _dereq_('./$.defined');
 module.exports = function(it){
   return Object(defined(it));
 };
-},{"./$.defined":62}],72:[function(_dereq_,module,exports){
+},{"./$.defined":81}],114:[function(_dereq_,module,exports){
+var id = 0
+  , px = Math.random();
+module.exports = function(key){
+  return 'Symbol('.concat(key === undefined ? '' : key, ')_', (++id + px).toString(36));
+};
+},{}],115:[function(_dereq_,module,exports){
+var store  = _dereq_('./$.shared')('wks')
+  , uid    = _dereq_('./$.uid')
+  , Symbol = _dereq_('./$.global').Symbol;
+module.exports = function(name){
+  return store[name] || (store[name] =
+    Symbol && Symbol[name] || (Symbol || uid)('Symbol.' + name));
+};
+},{"./$.global":86,"./$.shared":107,"./$.uid":114}],116:[function(_dereq_,module,exports){
+var classof   = _dereq_('./$.classof')
+  , ITERATOR  = _dereq_('./$.wks')('iterator')
+  , Iterators = _dereq_('./$.iterators');
+module.exports = _dereq_('./$.core').getIteratorMethod = function(it){
+  if(it != undefined)return it[ITERATOR]
+    || it['@@iterator']
+    || Iterators[classof(it)];
+};
+},{"./$.classof":73,"./$.core":79,"./$.iterators":97,"./$.wks":115}],117:[function(_dereq_,module,exports){
+var anObject = _dereq_('./$.an-object')
+  , get      = _dereq_('./core.get-iterator-method');
+module.exports = _dereq_('./$.core').getIterator = function(it){
+  var iterFn = get(it);
+  if(typeof iterFn != 'function')throw TypeError(it + ' is not iterable!');
+  return anObject(iterFn.call(it));
+};
+},{"./$.an-object":70,"./$.core":79,"./core.get-iterator-method":116}],118:[function(_dereq_,module,exports){
+'use strict';
+var addToUnscopables = _dereq_('./$.add-to-unscopables')
+  , step             = _dereq_('./$.iter-step')
+  , Iterators        = _dereq_('./$.iterators')
+  , toIObject        = _dereq_('./$.to-iobject');
+
+// 22.1.3.4 Array.prototype.entries()
+// 22.1.3.13 Array.prototype.keys()
+// 22.1.3.29 Array.prototype.values()
+// 22.1.3.30 Array.prototype[@@iterator]()
+module.exports = _dereq_('./$.iter-define')(Array, 'Array', function(iterated, kind){
+  this._t = toIObject(iterated); // target
+  this._i = 0;                   // next index
+  this._k = kind;                // kind
+// 22.1.5.2.1 %ArrayIteratorPrototype%.next()
+}, function(){
+  var O     = this._t
+    , kind  = this._k
+    , index = this._i++;
+  if(!O || index >= O.length){
+    this._t = undefined;
+    return step(1);
+  }
+  if(kind == 'keys'  )return step(0, index);
+  if(kind == 'values')return step(0, O[index]);
+  return step(0, [index, O[index]]);
+}, 'values');
+
+// argumentsList[@@iterator] is %ArrayProto_values% (9.4.4.6, 9.4.4.7)
+Iterators.Arguments = Iterators.Array;
+
+addToUnscopables('keys');
+addToUnscopables('values');
+addToUnscopables('entries');
+},{"./$.add-to-unscopables":69,"./$.iter-define":95,"./$.iter-step":96,"./$.iterators":97,"./$.to-iobject":111}],119:[function(_dereq_,module,exports){
+'use strict';
+var strong = _dereq_('./$.collection-strong');
+
+// 23.1 Map Objects
+_dereq_('./$.collection')('Map', function(get){
+  return function Map(){ return get(this, arguments.length > 0 ? arguments[0] : undefined); };
+}, {
+  // 23.1.3.6 Map.prototype.get(key)
+  get: function get(key){
+    var entry = strong.getEntry(this, key);
+    return entry && entry.v;
+  },
+  // 23.1.3.9 Map.prototype.set(key, value)
+  set: function set(key, value){
+    return strong.def(this, key === 0 ? 0 : key, value);
+  }
+}, strong, true);
+},{"./$.collection":78,"./$.collection-strong":75}],120:[function(_dereq_,module,exports){
 // 19.1.2.5 Object.freeze(O)
 var isObject = _dereq_('./$.is-object');
 
@@ -9742,7 +12278,7 @@ _dereq_('./$.object-sap')('freeze', function($freeze){
     return $freeze && isObject(it) ? $freeze(it) : it;
   };
 });
-},{"./$.is-object":66,"./$.object-sap":68}],73:[function(_dereq_,module,exports){
+},{"./$.is-object":92,"./$.object-sap":100}],121:[function(_dereq_,module,exports){
 // 19.1.2.6 Object.getOwnPropertyDescriptor(O, P)
 var toIObject = _dereq_('./$.to-iobject');
 
@@ -9751,7 +12287,7 @@ _dereq_('./$.object-sap')('getOwnPropertyDescriptor', function($getOwnPropertyDe
     return $getOwnPropertyDescriptor(toIObject(it), key);
   };
 });
-},{"./$.object-sap":68,"./$.to-iobject":70}],74:[function(_dereq_,module,exports){
+},{"./$.object-sap":100,"./$.to-iobject":111}],122:[function(_dereq_,module,exports){
 // 19.1.2.14 Object.keys(O)
 var toObject = _dereq_('./$.to-object');
 
@@ -9760,9 +12296,385 @@ _dereq_('./$.object-sap')('keys', function($keys){
     return $keys(toObject(it));
   };
 });
-},{"./$.object-sap":68,"./$.to-object":71}],75:[function(_dereq_,module,exports){
+},{"./$.object-sap":100,"./$.to-object":113}],123:[function(_dereq_,module,exports){
 // 19.1.3.19 Object.setPrototypeOf(O, proto)
-var $def = _dereq_('./$.def');
-$def($def.S, 'Object', {setPrototypeOf: _dereq_('./$.set-proto').set});
-},{"./$.def":61,"./$.set-proto":69}]},{},[7])(7)
+var $export = _dereq_('./$.export');
+$export($export.S, 'Object', {setPrototypeOf: _dereq_('./$.set-proto').set});
+},{"./$.export":83,"./$.set-proto":104}],124:[function(_dereq_,module,exports){
+arguments[4][58][0].apply(exports,arguments)
+},{"dup":58}],125:[function(_dereq_,module,exports){
+'use strict';
+var $at  = _dereq_('./$.string-at')(true);
+
+// 21.1.3.27 String.prototype[@@iterator]()
+_dereq_('./$.iter-define')(String, 'String', function(iterated){
+  this._t = String(iterated); // target
+  this._i = 0;                // next index
+// 21.1.5.2.1 %StringIteratorPrototype%.next()
+}, function(){
+  var O     = this._t
+    , index = this._i
+    , point;
+  if(index >= O.length)return {value: undefined, done: true};
+  point = $at(O, index);
+  this._i += point.length;
+  return {value: point, done: false};
+});
+},{"./$.iter-define":95,"./$.string-at":109}],126:[function(_dereq_,module,exports){
+'use strict';
+var $            = _dereq_('./$')
+  , redefine     = _dereq_('./$.redefine')
+  , weak         = _dereq_('./$.collection-weak')
+  , isObject     = _dereq_('./$.is-object')
+  , has          = _dereq_('./$.has')
+  , frozenStore  = weak.frozenStore
+  , WEAK         = weak.WEAK
+  , isExtensible = Object.isExtensible || isObject
+  , tmp          = {};
+
+// 23.3 WeakMap Objects
+var $WeakMap = _dereq_('./$.collection')('WeakMap', function(get){
+  return function WeakMap(){ return get(this, arguments.length > 0 ? arguments[0] : undefined); };
+}, {
+  // 23.3.3.3 WeakMap.prototype.get(key)
+  get: function get(key){
+    if(isObject(key)){
+      if(!isExtensible(key))return frozenStore(this).get(key);
+      if(has(key, WEAK))return key[WEAK][this._i];
+    }
+  },
+  // 23.3.3.5 WeakMap.prototype.set(key, value)
+  set: function set(key, value){
+    return weak.def(this, key, value);
+  }
+}, weak, true, true);
+
+// IE11 WeakMap frozen keys fix
+if(new $WeakMap().set((Object.freeze || Object)(tmp), 7).get(tmp) != 7){
+  $.each.call(['delete', 'has', 'get', 'set'], function(key){
+    var proto  = $WeakMap.prototype
+      , method = proto[key];
+    redefine(proto, key, function(a, b){
+      // store frozen objects on leaky map
+      if(isObject(a) && !isExtensible(a)){
+        var result = frozenStore(this)[key](a, b);
+        return key == 'set' ? this : result;
+      // store all the rest on native weakmap
+      } return method.call(this, a, b);
+    });
+  });
+}
+},{"./$":98,"./$.collection":78,"./$.collection-weak":77,"./$.has":87,"./$.is-object":92,"./$.redefine":103}],127:[function(_dereq_,module,exports){
+// https://github.com/DavidBruant/Map-Set.prototype.toJSON
+var $export  = _dereq_('./$.export');
+
+$export($export.P, 'Map', {toJSON: _dereq_('./$.collection-to-json')('Map')});
+},{"./$.collection-to-json":76,"./$.export":83}],128:[function(_dereq_,module,exports){
+_dereq_('./es6.array.iterator');
+var Iterators = _dereq_('./$.iterators');
+Iterators.NodeList = Iterators.HTMLCollection = Iterators.Array;
+},{"./$.iterators":97,"./es6.array.iterator":118}],129:[function(_dereq_,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+function EventEmitter() {
+  this._events = this._events || {};
+  this._maxListeners = this._maxListeners || undefined;
+}
+module.exports = EventEmitter;
+
+// Backwards-compat with node 0.10.x
+EventEmitter.EventEmitter = EventEmitter;
+
+EventEmitter.prototype._events = undefined;
+EventEmitter.prototype._maxListeners = undefined;
+
+// By default EventEmitters will print a warning if more than 10 listeners are
+// added to it. This is a useful default which helps finding memory leaks.
+EventEmitter.defaultMaxListeners = 10;
+
+// Obviously not all Emitters should be limited to 10. This function allows
+// that to be increased. Set to zero for unlimited.
+EventEmitter.prototype.setMaxListeners = function(n) {
+  if (!isNumber(n) || n < 0 || isNaN(n))
+    throw TypeError('n must be a positive number');
+  this._maxListeners = n;
+  return this;
+};
+
+EventEmitter.prototype.emit = function(type) {
+  var er, handler, len, args, i, listeners;
+
+  if (!this._events)
+    this._events = {};
+
+  // If there is no 'error' event listener then throw.
+  if (type === 'error') {
+    if (!this._events.error ||
+        (isObject(this._events.error) && !this._events.error.length)) {
+      er = arguments[1];
+      if (er instanceof Error) {
+        throw er; // Unhandled 'error' event
+      }
+      throw TypeError('Uncaught, unspecified "error" event.');
+    }
+  }
+
+  handler = this._events[type];
+
+  if (isUndefined(handler))
+    return false;
+
+  if (isFunction(handler)) {
+    switch (arguments.length) {
+      // fast cases
+      case 1:
+        handler.call(this);
+        break;
+      case 2:
+        handler.call(this, arguments[1]);
+        break;
+      case 3:
+        handler.call(this, arguments[1], arguments[2]);
+        break;
+      // slower
+      default:
+        len = arguments.length;
+        args = new Array(len - 1);
+        for (i = 1; i < len; i++)
+          args[i - 1] = arguments[i];
+        handler.apply(this, args);
+    }
+  } else if (isObject(handler)) {
+    len = arguments.length;
+    args = new Array(len - 1);
+    for (i = 1; i < len; i++)
+      args[i - 1] = arguments[i];
+
+    listeners = handler.slice();
+    len = listeners.length;
+    for (i = 0; i < len; i++)
+      listeners[i].apply(this, args);
+  }
+
+  return true;
+};
+
+EventEmitter.prototype.addListener = function(type, listener) {
+  var m;
+
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  if (!this._events)
+    this._events = {};
+
+  // To avoid recursion in the case that type === "newListener"! Before
+  // adding it to the listeners, first emit "newListener".
+  if (this._events.newListener)
+    this.emit('newListener', type,
+              isFunction(listener.listener) ?
+              listener.listener : listener);
+
+  if (!this._events[type])
+    // Optimize the case of one listener. Don't need the extra array object.
+    this._events[type] = listener;
+  else if (isObject(this._events[type]))
+    // If we've already got an array, just append.
+    this._events[type].push(listener);
+  else
+    // Adding the second element, need to change to array.
+    this._events[type] = [this._events[type], listener];
+
+  // Check for listener leak
+  if (isObject(this._events[type]) && !this._events[type].warned) {
+    var m;
+    if (!isUndefined(this._maxListeners)) {
+      m = this._maxListeners;
+    } else {
+      m = EventEmitter.defaultMaxListeners;
+    }
+
+    if (m && m > 0 && this._events[type].length > m) {
+      this._events[type].warned = true;
+      console.error('(node) warning: possible EventEmitter memory ' +
+                    'leak detected. %d listeners added. ' +
+                    'Use emitter.setMaxListeners() to increase limit.',
+                    this._events[type].length);
+      if (typeof console.trace === 'function') {
+        // not supported in IE 10
+        console.trace();
+      }
+    }
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.on = EventEmitter.prototype.addListener;
+
+EventEmitter.prototype.once = function(type, listener) {
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  var fired = false;
+
+  function g() {
+    this.removeListener(type, g);
+
+    if (!fired) {
+      fired = true;
+      listener.apply(this, arguments);
+    }
+  }
+
+  g.listener = listener;
+  this.on(type, g);
+
+  return this;
+};
+
+// emits a 'removeListener' event iff the listener was removed
+EventEmitter.prototype.removeListener = function(type, listener) {
+  var list, position, length, i;
+
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  if (!this._events || !this._events[type])
+    return this;
+
+  list = this._events[type];
+  length = list.length;
+  position = -1;
+
+  if (list === listener ||
+      (isFunction(list.listener) && list.listener === listener)) {
+    delete this._events[type];
+    if (this._events.removeListener)
+      this.emit('removeListener', type, listener);
+
+  } else if (isObject(list)) {
+    for (i = length; i-- > 0;) {
+      if (list[i] === listener ||
+          (list[i].listener && list[i].listener === listener)) {
+        position = i;
+        break;
+      }
+    }
+
+    if (position < 0)
+      return this;
+
+    if (list.length === 1) {
+      list.length = 0;
+      delete this._events[type];
+    } else {
+      list.splice(position, 1);
+    }
+
+    if (this._events.removeListener)
+      this.emit('removeListener', type, listener);
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.removeAllListeners = function(type) {
+  var key, listeners;
+
+  if (!this._events)
+    return this;
+
+  // not listening for removeListener, no need to emit
+  if (!this._events.removeListener) {
+    if (arguments.length === 0)
+      this._events = {};
+    else if (this._events[type])
+      delete this._events[type];
+    return this;
+  }
+
+  // emit removeListener for all listeners on all events
+  if (arguments.length === 0) {
+    for (key in this._events) {
+      if (key === 'removeListener') continue;
+      this.removeAllListeners(key);
+    }
+    this.removeAllListeners('removeListener');
+    this._events = {};
+    return this;
+  }
+
+  listeners = this._events[type];
+
+  if (isFunction(listeners)) {
+    this.removeListener(type, listeners);
+  } else {
+    // LIFO order
+    while (listeners.length)
+      this.removeListener(type, listeners[listeners.length - 1]);
+  }
+  delete this._events[type];
+
+  return this;
+};
+
+EventEmitter.prototype.listeners = function(type) {
+  var ret;
+  if (!this._events || !this._events[type])
+    ret = [];
+  else if (isFunction(this._events[type]))
+    ret = [this._events[type]];
+  else
+    ret = this._events[type].slice();
+  return ret;
+};
+
+EventEmitter.listenerCount = function(emitter, type) {
+  var ret;
+  if (!emitter._events || !emitter._events[type])
+    ret = 0;
+  else if (isFunction(emitter._events[type]))
+    ret = 1;
+  else
+    ret = emitter._events[type].length;
+  return ret;
+};
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+
+},{}]},{},[10])(10)
 });
